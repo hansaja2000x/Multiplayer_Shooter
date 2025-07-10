@@ -4,6 +4,7 @@ const server = new WebSocket.Server({ port: 3000 });
 const rooms = {};
 const playerSize = { x: 0.9, y: 1, z: 0.9 };
 const TICK_RATE = 60;
+let globalBulletId = 0;
 
 function generateRoomCode() {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -101,11 +102,17 @@ function checkCollision(newPos, room) {
   return false;
 }
 
-function broadcastToRoom(room, data) {
+function getOBBCollisionData(x, z, size, rotationY) {
+  return {
+    x, z, size, rotationY
+  };
+}
+
+function broadcastToRoom(room, data){
   const msg = JSON.stringify(data);
-  for (const sock of room.sockets || []) {
-    if (sock.readyState === WebSocket.OPEN) sock.send(msg);
-  }
+  room.sockets.forEach(s=>{
+    if(s.readyState===WebSocket.OPEN) s.send(msg);
+  });
 }
 
 // --- Ticker ---
@@ -114,6 +121,7 @@ setInterval(() => {
     const room = rooms[code];
     if (!room) continue;
 
+    // --- Player movement ---
     for (const id in room.players) {
       const p = room.players[id];
       const input = room.latestInputs?.[id];
@@ -121,36 +129,84 @@ setInterval(() => {
 
       const speed = 0.09;
       const rad = degToRad(p.rotationY);
-
       let moveX = 0, moveZ = 0;
-      p.forward = 0;
-      p.right = 0;
+      p.forward = 0; p.right = 0;
+
       if (input.forward)  { moveX += Math.sin(rad) * speed; moveZ += Math.cos(rad) * speed; p.forward = 1; }
-      if (input.backward) { moveX -= Math.sin(rad) * speed; moveZ -= Math.cos(rad) * speed; p.forward = -1;}
-      if (input.left)     { moveX -= Math.cos(rad) * speed; moveZ += Math.sin(rad) * speed; p.right = -1;}
-      if (input.right)    { moveX += Math.cos(rad) * speed; moveZ -= Math.sin(rad) * speed; p.right = 1;}
+      if (input.backward) { moveX -= Math.sin(rad) * speed; moveZ -= Math.cos(rad) * speed; p.forward = -1; }
+      if (input.left)     { moveX -= Math.cos(rad) * speed; moveZ += Math.sin(rad) * speed; p.right = -1; }
+      if (input.right)    { moveX += Math.cos(rad) * speed; moveZ -= Math.sin(rad) * speed; p.right = 1; }
 
       if (input.rotationDelta !== undefined) {
         p.rotationY = (p.rotationY + input.rotationDelta + 360) % 360;
       }
 
-      const newPos = { ...p, x: p.x + moveX, z: p.z + moveZ };
-      if (!checkCollision(newPos, room)) {
-        p.x = newPos.x;
-        p.z = newPos.z;
+      const candidate = { ...p, x: p.x + moveX, z: p.z + moveZ };
+      if (!checkCollision(candidate, room)) {
+        p.x = candidate.x;
+        p.z = candidate.z;
       }
     }
 
-    broadcastToRoom(room, { type: 'stateUpdate', players: room.players });
+    // --- Bullet simulation ---
+    const bulletSpeed = 0.25;
+    room.bullets = room.bullets.filter(bullet => {
+      bullet.x += Math.sin(degToRad(bullet.rotationY)) * bulletSpeed;
+      bullet.z += Math.cos(degToRad(bullet.rotationY)) * bulletSpeed;
+      bullet.lifeTime -= 1 / TICK_RATE;
+
+      const bulletOBB = getOBBCollisionData(bullet.x, bullet.z, { x: 0.07, y: 0.07, z: 0.2 }, bullet.rotationY);
+
+      // --- Obstacle Collision ---
+      for (const obs of room.obstacles) {
+        const obsOBB = getOBBCollisionData(obs.x, obs.z, obs.size, obs.rotationY || 0);
+        if (checkOBBCollision(bulletOBB, obsOBB)) {
+          broadcastToRoom(room, { type: 'bulletHitObstacle', bulletPos: { x: bullet.x, y: bullet.y, z: bullet.z } });
+          broadcastToRoom(room, { type: 'bulletRemove', bulletId: bullet.id });
+          return false;
+        }
+      }
+
+      // --- Player Collision ---
+      for (const targetId in room.players) {
+        if (targetId === bullet.ownerId) continue;
+        const t = room.players[targetId];
+        if (t.health <= 0) continue;
+
+        const targetOBB = getOBBCollisionData(t.x, t.z, playerSize, t.rotationY);
+        if (checkOBBCollision(bulletOBB, targetOBB)) {
+          t.health = Math.max(0, t.health - 20);
+          broadcastToRoom(room, { type: 'playerHit', targetId, newHealth: t.health });
+          broadcastToRoom(room, { type: 'bulletRemove', bulletId: bullet.id });
+          return false;
+        }
+      }
+
+      return bullet.lifeTime > 0;
+    });
+
+    // --- Broadcast game state ---
+    broadcastToRoom(room, {
+      type: 'stateUpdate',
+      players: room.players,
+      bullets: room.bullets.map(b => ({
+        id: b.id,
+        ownerId: b.ownerId,
+        x: b.x,
+        y: b.y,
+        z: b.z,
+        rotationY: b.rotationY
+      }))
+    });
   }
 }, 1000 / TICK_RATE);
 
 // --- Connection handler ---
-server.on('connection', (ws) => {
+server.on('connection', ws => {
   let roomCode = null;
   const playerId = Math.random().toString(36).substr(2, 9);
 
-  ws.on('message', (msg) => {
+  ws.on('message', msg => {
     try {
       const data = JSON.parse(msg);
 
@@ -160,15 +216,19 @@ server.on('connection', (ws) => {
           players: {},
           latestInputs: {},
           sockets: [ws],
+          bullets: [],
           obstacles: [
             { x: 2, y: 0, z: 2, size: { x: 1, y: 1, z: 1 }, rotationY: 0 },
             { x: -1, y: 0, z: -3, size: { x: 2, y: 1, z: 2 }, rotationY: 45 },
             { x: 0, y: 0, z: 5, size: { x: 1, y: 1, z: 1 }, rotationY: 30 }
           ]
         };
-        rooms[roomCode].players[playerId] = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0 };
-        ws.send(JSON.stringify({ type: 'yourId', playerId }));
-        ws.send(JSON.stringify({ type: 'roomCreated', roomCode }));
+
+        const player = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0, health: 100, canShoot: true, name: data.name };
+        rooms[roomCode].players[playerId] = player;
+        playerName = player.name;
+        ws.send(JSON.stringify({ type: 'yourId', id: playerId, name: playerName }));
+        ws.send(JSON.stringify({ type: 'roomJoined', roomCode }));
         ws.send(JSON.stringify({ type: 'init', players: rooms[roomCode].players }));
       }
 
@@ -177,10 +237,14 @@ server.on('connection', (ws) => {
         const room = rooms[roomCode];
         if (!room) return ws.send(JSON.stringify({ type: 'error', msg: 'Room not found' }));
 
-        room.players[playerId] = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0 };
+        const player = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0, health: 100, canShoot: true, name: data.name };
+        room.players[playerId] = player;
         room.sockets.push(ws);
-        ws.send(JSON.stringify({ type: 'yourId', playerId }));
+
+        playerName = player.name;
+        ws.send(JSON.stringify({ type: 'yourId', id: playerId, name: playerName }));
         ws.send(JSON.stringify({ type: 'init', players: room.players }));
+        ws.send(JSON.stringify({ type: 'roomJoined', roomCode }));
         broadcastToRoom(room, { type: 'newPlayerConnected', players: room.players });
       }
 
@@ -189,18 +253,44 @@ server.on('connection', (ws) => {
         if (!room || !room.players[playerId]) return;
         room.latestInputs[playerId] = data.input;
       }
-    } catch (err) {
-      console.error('Invalid message:', err);
+
+      else if (data.type === 'shoot') {
+        const room = rooms[roomCode];
+        const player = room?.players?.[playerId];
+        if (!player || !player.canShoot) return;
+
+        player.canShoot = false;
+        setTimeout(() => { player.canShoot = true; }, 500);
+
+        const rad = degToRad(player.rotationY);
+        const bx = player.x + Math.sin(rad);
+        const bz = player.z + Math.cos(rad);
+
+        const bulletId = globalBulletId++;
+        room.bullets.push({
+          id: bulletId,
+          x: bx,
+          y: player.y + 1.535,
+          z: bz,
+          rotationY: player.rotationY,
+          ownerId: playerId,
+          lifeTime: 2.0
+        });
+      }
+
+    } catch (e) {
+      console.error("Invalid message:", e);
     }
   });
 
   ws.on('close', () => {
     if (roomCode && rooms[roomCode]) {
-      delete rooms[roomCode].players[playerId];
-      delete rooms[roomCode].latestInputs[playerId];
-      rooms[roomCode].sockets = rooms[roomCode].sockets.filter(s => s !== ws);
+      const room = rooms[roomCode];
+      delete room.players[playerId];
+      delete room.latestInputs[playerId];
+      room.sockets = room.sockets.filter(s => s !== ws);
     }
   });
 });
 
-console.log('WebSocket server running on ws://localhost:3000');
+console.log("WebSocket server running on ws://localhost:3000");

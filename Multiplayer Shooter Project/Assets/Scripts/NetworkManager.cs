@@ -2,7 +2,9 @@ using UnityEngine;
 using NativeWebSocket;
 using TMPro;
 using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
+using UnityEngine.UI;
 
 public class NetwokManager : MonoBehaviour
 {
@@ -10,13 +12,26 @@ public class NetwokManager : MonoBehaviour
 
     WebSocket ws;
     public GameObject playerPrefab;
+    public GameObject bulletPrefab;
+    public GameObject hitVFXPrefab;
     public TMP_Text roomDisplayText;
     public TMP_InputField roomInput;
+    public TMP_InputField nameInput;
     public GameObject UICamera;
+    public Slider myHealthSlider;
+    public TextMeshProUGUI nameText;
 
     Dictionary<string, GameObject> players = new();
     string roomCode;
     string myPlayerId;
+
+    class BulletData { public int id; public float x, y, z, rotationY; }
+    private Dictionary<int, GameObject> bullets = new();
+    Dictionary<int, GameObject> activeBullets = new();
+
+    private PlayerAnimationHandler myPlayerAnimationhandler;
+
+    int bulletIdCounter = 0;
 
     async void Awake()
     {
@@ -24,15 +39,13 @@ public class NetwokManager : MonoBehaviour
         ws = new WebSocket("ws://localhost:3000");
 
         ws.OnOpen += () => Debug.Log("Connected to server");
-
-        ws.OnMessage += (bytes) =>
+        ws.OnMessage += bytes =>
         {
-            string message = System.Text.Encoding.UTF8.GetString(bytes);
-            HandleMessage(message);
+            string msg = System.Text.Encoding.UTF8.GetString(bytes);
+            HandleMessage(msg);
         };
-
-        ws.OnError += (e) => Debug.Log("WebSocket Error: " + e);
-        ws.OnClose += (e) => Debug.Log("WebSocket Closed");
+        ws.OnError += e => Debug.LogError("WebSocket Error: " + e);
+        ws.OnClose += e => Debug.Log("WebSocket Closed");
 
         await ws.Connect();
     }
@@ -46,13 +59,13 @@ public class NetwokManager : MonoBehaviour
 
     public void CreateRoom()
     {
-        var msg = new { type = "createRoom" };
+        var msg = new { type = "createRoom", name = nameInput.text };
         ws.SendText(JsonConvert.SerializeObject(msg));
     }
 
     public void JoinRoom()
     {
-        var msg = new { type = "joinRoom", roomCode = roomInput.text };
+        var msg = new { type = "joinRoom", roomCode = roomInput.text, name = nameInput.text };
         ws.SendText(JsonConvert.SerializeObject(msg));
     }
 
@@ -66,97 +79,162 @@ public class NetwokManager : MonoBehaviour
         ws.SendText(JsonConvert.SerializeObject(msg));
     }
 
+    public void SendShoot()
+    {
+        var msg = new { type = "shoot" };
+        ws.SendText(JsonConvert.SerializeObject(msg));
+    }
+
     void HandleMessage(string msg)
     {
         var json = JsonConvert.DeserializeObject<Dictionary<string, object>>(msg);
-        if (!json.ContainsKey("type")) return;
-
-        string type = json["type"].ToString();
+        if (!json.TryGetValue("type", out var tType)) return;
+        string type = tType.ToString();
 
         if (type == "yourId")
         {
-            myPlayerId = json["playerId"].ToString();
+            myPlayerId = json["id"].ToString();
+            string myName = json["name"].ToString();
             Debug.Log("My Player ID: " + myPlayerId);
+            nameText.text = myName;
             UICamera.SetActive(false);
         }
-        else if (type == "roomCreated")
+        else if (type == "roomJoined")
         {
             roomCode = json["roomCode"].ToString();
             roomDisplayText.text = "Room: " + roomCode;
         }
-        else if (type == "init")
+        else if (type == "init" || type == "newPlayerConnected")
         {
-            string playerData = json["players"].ToString();
+            var playerData = json["players"].ToString();
             var dict = JsonConvert.DeserializeObject<Dictionary<string, Position>>(playerData);
-
             foreach (var kv in dict)
             {
-                // Instantiate new players
                 if (!players.ContainsKey(kv.Key))
-                    players[kv.Key] = Instantiate(playerPrefab);
-
-                // Set initial transform
-                players[kv.Key].transform.position = new Vector3(kv.Value.x, kv.Value.y, kv.Value.z);
-                players[kv.Key].transform.rotation = Quaternion.Euler(0, kv.Value.rotationY, 0);
-
-                // Disable camera for non-local players
-                if (kv.Key != myPlayerId)
                 {
-                    PlayerInput input = players[kv.Key].GetComponent<PlayerInput>();
-                    input.DeactivateCameraObject();
+                    var go = Instantiate(playerPrefab);
+                    players[kv.Key] = go;
+                    if (kv.Key != myPlayerId)
+                    {
+                        go.GetComponent<PlayerInput>().DeactivateCameraObject();
+                        go.GetComponent<PlayerInput>().enabled = false;
+                    }
+                    else
+                    {
+                        myPlayerAnimationhandler = go.GetComponent<PlayerAnimationHandler>();
+                    }
                 }
-            }
-        }
-        else if (type == "newPlayerConnected")
-        {
-            string playerData = json["players"].ToString();
-            var dict = JsonConvert.DeserializeObject<Dictionary<string, Position>>(playerData);
+                var p = players[kv.Key];
+                p.transform.position = new Vector3(kv.Value.x, kv.Value.y, kv.Value.z);
+                p.transform.rotation = Quaternion.Euler(0, kv.Value.rotationY, 0);
 
-            foreach (var kv in dict)
-            {
-                // Instantiate new players
-                if (!players.ContainsKey(kv.Key))
-                    players[kv.Key] = Instantiate(playerPrefab);
-
-                // Disable camera for non-local players
-                if (kv.Key != myPlayerId)
-                {
-                    PlayerInput input = players[kv.Key].GetComponent<PlayerInput>();
-                    input.DeactivateCameraObject();
-                }
+                /*var slider = p.GetComponentInChildren<Slider>();
+                slider.value = kv.Value.health / 100f;*/
             }
         }
         else if (type == "stateUpdate")
         {
-            string playerData = json["players"].ToString();
+            var playerData = json["players"].ToString();
             var dict = JsonConvert.DeserializeObject<Dictionary<string, Position>>(playerData);
-
             foreach (var kv in dict)
             {
-                if (players.ContainsKey(kv.Key))
-                {
-                    GameObject player = players[kv.Key];
-                    player.transform.position = new Vector3(kv.Value.x, kv.Value.y, kv.Value.z);
-                    player.transform.rotation = Quaternion.Euler(0, kv.Value.rotationY, 0);
-                    PlayerAnimationHandler playerAnimationhandler = player.GetComponent<PlayerAnimationHandler>();
-                    playerAnimationhandler.SetAnimState(kv.Value.forward, kv.Value.right);
-                }
+                if (!players.ContainsKey(kv.Key)) continue;
+                var pgo = players[kv.Key];
+                pgo.transform.position = new Vector3(kv.Value.x, kv.Value.y, kv.Value.z);
+                pgo.transform.rotation = Quaternion.Euler(0, kv.Value.rotationY, 0);
+
+                var anim = pgo.GetComponent<PlayerAnimationHandler>();
+                anim.SetAnimState(kv.Value.forward, kv.Value.right);
+
+                if (kv.Key == myPlayerId)
+                    myHealthSlider.value = kv.Value.health / 100f;
+                /*else
+                    pgo.GetComponentInChildren<Slider>().value = kv.Value.health / 100f;*/
+            }
+
+            var bulletData = JsonConvert.SerializeObject(json["bullets"]);
+            var bulletList = JsonConvert.DeserializeObject<List<BulletState>>(bulletData);
+
+            SyncBullets(bulletList);
+        }
+        else if (type == "bulletRemove")
+        {
+            int id = int.Parse(json["bulletId"].ToString());
+            if (activeBullets.ContainsKey(id))
+            {
+                Destroy(activeBullets[id]);
+                activeBullets.Remove(id);
             }
         }
-        else if (type == "mirror")
+
+        else if (type == "bulletHitObstacle")
         {
-            Debug.Log("Mirror: " + msg);
+            var pos = JsonConvert.DeserializeObject<Pos>(json["bulletPos"].ToString());
+            Instantiate(hitVFXPrefab, new Vector3(pos.x, pos.y, pos.z), Quaternion.identity);
         }
-        else if (type == "error")
+        else if (type == "playerHit")
         {
-            Debug.LogError(json["msg"].ToString());
+            string targetId = json["targetId"].ToString();
+            float newHealth = float.Parse(json["newHealth"].ToString());
+            if (players.ContainsKey(targetId))
+            {
+                if (targetId == myPlayerId)
+                    myHealthSlider.value = newHealth / 100f;
+                /*else
+                    players[targetId].GetComponentInChildren<Slider>().value = newHealth / 100f;*/
+            }
+        }
+    }
+
+    void SyncBullets(List<BulletState> serverBullets)
+    {
+        HashSet<int> serverIds = new();
+
+        foreach (var b in serverBullets)
+        {
+            serverIds.Add(b.id);
+            if (!bullets.ContainsKey(b.id))
+            {
+                GameObject go = Instantiate(bulletPrefab);
+                bullets[b.id] = go;
+                if(b.ownerId == myPlayerId)
+                {
+                    myPlayerAnimationhandler.EnableShootAnimation();
+                    print("X");
+                }
+                
+            }
+
+            GameObject bulletGO = bullets[b.id];
+            bulletGO.transform.position = new Vector3(b.x, b.y, b.z);
+            bulletGO.transform.rotation = Quaternion.Euler(0, b.rotationY, 0);
+        }
+
+        var idsToRemove = new List<int>();
+        foreach (var id in bullets.Keys)
+        {
+            if (!serverIds.Contains(id))
+                idsToRemove.Add(id);
+        }
+
+        foreach (var id in idsToRemove)
+        {
+            Destroy(bullets[id]);
+            bullets.Remove(id);
         }
     }
 
 
-    class Position
+
+
+    class Position { public float x, y, z, rotationY, forward, right, health; }
+    class Pos { public float x, y, z; }
+
+    class BulletState
     {
-        public float x, y, z, rotationY, forward, right;
+        public int id;
+        public string ownerId;
+        public float x, y, z, rotationY;
     }
 
     async void OnApplicationQuit()

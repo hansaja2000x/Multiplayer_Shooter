@@ -22,6 +22,9 @@ public class PlayerInput : MonoBehaviour
         float mouseDeltaX = Input.GetAxis("Mouse X") * 5f;
 
         NetwokManager.Instance.SendInput(forward, backward, left, right, mouseDeltaX);
+
+        if (Input.GetMouseButtonDown(0))
+            NetwokManager.Instance.SendShoot();
     }
 
     public void DeactivateCameraObject()

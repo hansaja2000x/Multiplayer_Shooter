@@ -11,6 +11,15 @@ public class PlayerAnimationHandler : MonoBehaviour
         playerAnimator.SetFloat("MoveX", right );
         playerAnimator.SetFloat("MoveZ", forward );
 
-        print(forward);
+    }
+
+    public void DisableShootAnimation()
+    {
+        //playerAnimator.SetBool("isShooting", false);
+    }
+
+    public void EnableShootAnimation()
+    {
+        playerAnimator.SetTrigger("isShooting");
     }
 }
