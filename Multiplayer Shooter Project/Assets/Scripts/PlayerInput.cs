@@ -3,11 +3,13 @@ using UnityEngine;
 public class PlayerInput : MonoBehaviour
 {
     [SerializeField] private GameObject cameraObj;
-    float lastMouseX;
+    private float lastMouseX;
+    private bool isCursorLocked = false;
 
     void Start()
     {
         lastMouseX = Input.mousePosition.x;
+        LockCursor();
     }
 
     void Update()
@@ -25,5 +27,12 @@ public class PlayerInput : MonoBehaviour
     public void DeactivateCameraObject()
     {
         cameraObj.SetActive(false);
+    }
+
+    private void LockCursor()
+    {
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        isCursorLocked = true;
     }
 }

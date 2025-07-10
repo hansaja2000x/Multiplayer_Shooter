@@ -107,6 +107,25 @@ public class NetwokManager : MonoBehaviour
                 }
             }
         }
+        else if (type == "newPlayerConnected")
+        {
+            string playerData = json["players"].ToString();
+            var dict = JsonConvert.DeserializeObject<Dictionary<string, Position>>(playerData);
+
+            foreach (var kv in dict)
+            {
+                // Instantiate new players
+                if (!players.ContainsKey(kv.Key))
+                    players[kv.Key] = Instantiate(playerPrefab);
+
+                // Disable camera for non-local players
+                if (kv.Key != myPlayerId)
+                {
+                    PlayerInput input = players[kv.Key].GetComponent<PlayerInput>();
+                    input.DeactivateCameraObject();
+                }
+            }
+        }
         else if (type == "stateUpdate")
         {
             string playerData = json["players"].ToString();

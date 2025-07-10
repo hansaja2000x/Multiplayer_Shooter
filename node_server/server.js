@@ -9,20 +9,95 @@ function generateRoomCode() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-function checkAABBCollision(a, b) {
-  return (
-    Math.abs(a.x - b.x) < (a.size.x + b.size.x) / 2 &&
-    Math.abs(a.y - b.y) < (a.size.y + b.size.y) / 2 &&
-    Math.abs(a.z - b.z) < (a.size.z + b.size.z) / 2
-  );
+// --- Rotation-Based OBB Collision System (XZ-plane only) ---
+function degToRad(deg) {
+  return deg * (Math.PI / 180);
 }
 
-function checkCollision(newPos, room) {
-  const playerAABB = { x: newPos.x, y: newPos.y, z: newPos.z, size: playerSize };
-  for (const obs of room.obstacles) {
-    const obstacleAABB = { x: obs.x, y: obs.y, z: obs.z, size: obs.size };
-    if (checkAABBCollision(playerAABB, obstacleAABB)) return true;
+function getOBBAxes(rotationY) {
+  const rad = degToRad(rotationY);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  return [
+    { x: cos, z: sin },     // local right
+    { x: -sin, z: cos }     // local forward
+  ];
+}
+
+function projectOntoAxis(points, axis) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const p of points) {
+    const dot = p.x * axis.x + p.z * axis.z;
+    if (dot < min) min = dot;
+    if (dot > max) max = dot;
   }
+  return { min, max };
+}
+
+function isOverlapping(projA, projB) {
+  return projA.max >= projB.min && projB.max >= projA.min;
+}
+
+function getOBBCorners(x, z, size, rotationY) {
+  const rad = degToRad(rotationY);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const hx = size.x / 2;
+  const hz = size.z / 2;
+
+  const corners = [
+    { x: -hx, z: -hz },
+    { x: hx, z: -hz },
+    { x: hx, z: hz },
+    { x: -hx, z: hz },
+  ];
+
+  return corners.map(corner => ({
+    x: x + corner.x * cos - corner.z * sin,
+    z: z + corner.x * sin + corner.z * cos
+  }));
+}
+
+function checkOBBCollision(a, b) {
+  const aCorners = getOBBCorners(a.x, a.z, a.size, a.rotationY);
+  const bCorners = getOBBCorners(b.x, b.z, b.size, b.rotationY);
+
+  const axes = [
+    ...getOBBAxes(a.rotationY),
+    ...getOBBAxes(b.rotationY),
+  ];
+
+  for (const axis of axes) {
+    const projA = projectOntoAxis(aCorners, axis);
+    const projB = projectOntoAxis(bCorners, axis);
+    if (!isOverlapping(projA, projB)) return false;
+  }
+
+  return true;
+}
+
+// --- Main collision check using rotation ---
+function checkCollision(newPos, room) {
+  const playerOBB = {
+    x: newPos.x,
+    z: newPos.z,
+    size: playerSize,
+    rotationY: newPos.rotationY
+  };
+
+  for (const obs of room.obstacles) {
+    const obstacleOBB = {
+      x: obs.x,
+      z: obs.z,
+      size: obs.size,
+      rotationY: obs.rotationY || 0
+    };
+    if (checkOBBCollision(playerOBB, obstacleOBB)) return true;
+  }
+
   return false;
 }
 
@@ -33,7 +108,7 @@ function broadcastToRoom(room, data) {
   }
 }
 
-// Tick
+// --- Ticker ---
 setInterval(() => {
   for (const code in rooms) {
     const room = rooms[code];
@@ -45,7 +120,7 @@ setInterval(() => {
       if (!input) continue;
 
       const speed = 0.09;
-      const rad = (p.rotationY * Math.PI) / 180;
+      const rad = degToRad(p.rotationY);
 
       let moveX = 0, moveZ = 0;
       p.forward = 0;
@@ -59,7 +134,7 @@ setInterval(() => {
         p.rotationY = (p.rotationY + input.rotationDelta + 360) % 360;
       }
 
-      let newPos = { ...p, x: p.x + moveX, z: p.z + moveZ };
+      const newPos = { ...p, x: p.x + moveX, z: p.z + moveZ };
       if (!checkCollision(newPos, room)) {
         p.x = newPos.x;
         p.z = newPos.z;
@@ -70,7 +145,7 @@ setInterval(() => {
   }
 }, 1000 / TICK_RATE);
 
-// Handle new WebSocket connection
+// --- Connection handler ---
 server.on('connection', (ws) => {
   let roomCode = null;
   const playerId = Math.random().toString(36).substr(2, 9);
@@ -86,12 +161,12 @@ server.on('connection', (ws) => {
           latestInputs: {},
           sockets: [ws],
           obstacles: [
-            { x: 2, y: 0, z: 2, size: { x: 1, y: 1, z: 1 } },
-            { x: -1, y: 0, z: -3, size: { x: 2, y: 1, z: 2 } },
-            { x: 0, y: 0, z: 5, size: { x: 1, y: 1, z: 1 } }
+            { x: 2, y: 0, z: 2, size: { x: 1, y: 1, z: 1 }, rotationY: 0 },
+            { x: -1, y: 0, z: -3, size: { x: 2, y: 1, z: 2 }, rotationY: 45 },
+            { x: 0, y: 0, z: 5, size: { x: 1, y: 1, z: 1 }, rotationY: 30 }
           ]
         };
-        rooms[roomCode].players[playerId] = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0};
+        rooms[roomCode].players[playerId] = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0 };
         ws.send(JSON.stringify({ type: 'yourId', playerId }));
         ws.send(JSON.stringify({ type: 'roomCreated', roomCode }));
         ws.send(JSON.stringify({ type: 'init', players: rooms[roomCode].players }));
@@ -106,6 +181,7 @@ server.on('connection', (ws) => {
         room.sockets.push(ws);
         ws.send(JSON.stringify({ type: 'yourId', playerId }));
         ws.send(JSON.stringify({ type: 'init', players: room.players }));
+        broadcastToRoom(room, { type: 'newPlayerConnected', players: room.players });
       }
 
       else if (data.type === 'move') {
