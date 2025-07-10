@@ -4,15 +4,13 @@ using UnityEngine;
 
 public class PlayerAnimationHandler : MonoBehaviour
 {
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
+    [SerializeField] private Animator playerAnimator;
 
-    // Update is called once per frame
-    void Update()
+    public void SetAnimState(float forward, float right)
     {
-        
+        playerAnimator.SetFloat("MoveX", right );
+        playerAnimator.SetFloat("MoveZ", forward );
+
+        print(forward);
     }
 }

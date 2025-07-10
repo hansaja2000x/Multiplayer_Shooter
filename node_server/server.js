@@ -91,7 +91,7 @@ server.on('connection', (ws) => {
             { x: 0, y: 0, z: 5, size: { x: 1, y: 1, z: 1 } }
           ]
         };
-        rooms[roomCode].players[playerId] = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0 };
+        rooms[roomCode].players[playerId] = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0};
         ws.send(JSON.stringify({ type: 'yourId', playerId }));
         ws.send(JSON.stringify({ type: 'roomCreated', roomCode }));
         ws.send(JSON.stringify({ type: 'init', players: rooms[roomCode].players }));
@@ -102,7 +102,7 @@ server.on('connection', (ws) => {
         const room = rooms[roomCode];
         if (!room) return ws.send(JSON.stringify({ type: 'error', msg: 'Room not found' }));
 
-        room.players[playerId] = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0 };
+        room.players[playerId] = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0 };
         room.sockets.push(ws);
         ws.send(JSON.stringify({ type: 'yourId', playerId }));
         ws.send(JSON.stringify({ type: 'init', players: room.players }));

@@ -119,6 +119,8 @@ public class NetwokManager : MonoBehaviour
                     GameObject player = players[kv.Key];
                     player.transform.position = new Vector3(kv.Value.x, kv.Value.y, kv.Value.z);
                     player.transform.rotation = Quaternion.Euler(0, kv.Value.rotationY, 0);
+                    PlayerAnimationHandler playerAnimationhandler = player.GetComponent<PlayerAnimationHandler>();
+                    playerAnimationhandler.SetAnimState(kv.Value.forward, kv.Value.right);
                 }
             }
         }
@@ -135,7 +137,7 @@ public class NetwokManager : MonoBehaviour
 
     class Position
     {
-        public float x, y, z, rotationY;
+        public float x, y, z, rotationY, forward, right;
     }
 
     async void OnApplicationQuit()
