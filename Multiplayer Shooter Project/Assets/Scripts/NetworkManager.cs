@@ -116,8 +116,9 @@ public class NetwokManager : MonoBehaviour
             {
                 if (players.ContainsKey(kv.Key))
                 {
-                    players[kv.Key].transform.position = new Vector3(kv.Value.x, kv.Value.y, kv.Value.z);
-                    players[kv.Key].transform.rotation = Quaternion.Euler(0, kv.Value.rotationY, 0);
+                    GameObject player = players[kv.Key];
+                    player.transform.position = new Vector3(kv.Value.x, kv.Value.y, kv.Value.z);
+                    player.transform.rotation = Quaternion.Euler(0, kv.Value.rotationY, 0);
                 }
             }
         }

@@ -17,7 +17,7 @@ public class PlayerInput : MonoBehaviour
         bool left = Input.GetKey(KeyCode.A);
         bool right = Input.GetKey(KeyCode.D);
 
-        float mouseDeltaX = Input.GetAxis("Mouse X") * 2.5f;
+        float mouseDeltaX = Input.GetAxis("Mouse X") * 5f;
 
         NetwokManager.Instance.SendInput(forward, backward, left, right, mouseDeltaX);
     }
