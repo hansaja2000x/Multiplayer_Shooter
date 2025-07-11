@@ -20,6 +20,11 @@ public class PlayerAnimationHandler : MonoBehaviour
 
     public void EnableShootAnimation()
     {
-        playerAnimator.SetTrigger("isShooting");
+        playerAnimator.SetTrigger("Shooting");
+    }
+
+    public void DeathAnimation()
+    {
+        playerAnimator.SetTrigger("Death");
     }
 }

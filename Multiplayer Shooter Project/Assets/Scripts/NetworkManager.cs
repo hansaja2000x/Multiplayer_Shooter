@@ -21,6 +21,8 @@ public class NetwokManager : MonoBehaviour
     public Slider myHealthSlider;
     public TextMeshProUGUI nameText;
 
+    [SerializeField] private GameEndHandler gameEndHandler;
+
     Dictionary<string, GameObject> players = new();
     string roomCode;
     string myPlayerId;
@@ -184,6 +186,20 @@ public class NetwokManager : MonoBehaviour
                     players[targetId].GetComponentInChildren<Slider>().value = newHealth / 100f;*/
             }
         }
+        else if (type == "playerWon")
+        {
+            string winnerName = json["winnerName"].ToString();
+            string loserId = json["loserId"].ToString();
+            if (players.ContainsKey(loserId))
+            {
+                if (loserId == myPlayerId)
+                {
+                    myPlayerAnimationhandler.DeathAnimation();
+                }
+
+                gameEndHandler.GameEnd(winnerName);
+            }
+        }
     }
 
     void SyncBullets(List<BulletState> serverBullets)
@@ -200,7 +216,6 @@ public class NetwokManager : MonoBehaviour
                 if(b.ownerId == myPlayerId)
                 {
                     myPlayerAnimationhandler.EnableShootAnimation();
-                    print("X");
                 }
                 
             }

@@ -176,7 +176,20 @@ setInterval(() => {
         const targetOBB = getOBBCollisionData(t.x, t.z, playerSize, t.rotationY);
         if (checkOBBCollision(bulletOBB, targetOBB)) {
           t.health = Math.max(0, t.health - 20);
+          if(t.health <= 0){
+            const winner = room.players[bullet.ownerId];
+            const loser = room.players[targetId];
+           // broadcastToRoom(room, { type: 'playerDead', targetId});
+            broadcastToRoom(room, {
+              type: 'playerWon',
+              winnerId: bullet.ownerId,
+              loserId: targetId,
+              winnerName: winner?.name ?? 'Unknown',
+              loserName: loser?.name ?? 'Unknown'
+            });
+          }
           broadcastToRoom(room, { type: 'playerHit', targetId, newHealth: t.health });
+          broadcastToRoom(room, { type: 'bulletHitObstacle', bulletPos: { x: bullet.x, y: bullet.y, z: bullet.z } });
           broadcastToRoom(room, { type: 'bulletRemove', bulletId: bullet.id });
           return false;
         }
