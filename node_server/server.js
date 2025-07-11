@@ -4,6 +4,7 @@ const server = new WebSocket.Server({ port: 3000 });
 const rooms = {};
 const playerSize = { x: 0.9, y: 1, z: 0.9 };
 const TICK_RATE = 60;
+const MAX_PLAYERS = 2;
 let globalBulletId = 0;
 
 function generateRoomCode() {
@@ -254,8 +255,16 @@ server.on('connection', ws => {
         roomCode = data.roomCode;
         const room = rooms[roomCode];
         if (!room) {
-          ws.send(JSON.stringify({ type: 'noRoom' }))
+          ws.send(JSON.stringify({ type: 'errorRoom', msg: 'Room not found' }))
           return ws.send(JSON.stringify({ type: 'error', msg: 'Room not found' }));
+        }
+        
+        if (Object.keys(room.players).length >= MAX_PLAYERS) {
+          ws.send(JSON.stringify({
+            type: 'errorRoom',
+            msg: 'This room already has two players..'
+          }));
+          return;                  
         }
 
         const player = { id: playerId, x: 0, y: 0, z: 29.33, rotationY: 178.27, forward: 0, right: 0, health: 100, canShoot: true, name: data.name };
@@ -264,7 +273,7 @@ server.on('connection', ws => {
 
         playerName = player.name;
         ws.send(JSON.stringify({ type: 'yourId', id: playerId, name: playerName }));
-        ws.send(JSON.stringify({ type: 'init', players: room.players }));
+        ws.send(JSON.stringify({ type: 'init', players: room.players}));
         ws.send(JSON.stringify({ type: 'roomJoined', roomCode }));
         broadcastToRoom(room, { type: 'newPlayerConnected', players: room.players });
       }
@@ -310,6 +319,15 @@ server.on('connection', ws => {
       delete room.players[playerId];
       delete room.latestInputs[playerId];
       room.sockets = room.sockets.filter(s => s !== ws);
+
+      broadcastToRoom(room, {
+        type: 'playerDisconnected',
+        playerId: playerId
+      });
+
+      if (Object.keys(room.players).length === 0) {
+        delete rooms[roomCode];
+      }
     }
   });
 });

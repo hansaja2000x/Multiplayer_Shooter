@@ -11,9 +11,12 @@ public class NetwokManager : MonoBehaviour
     public static NetwokManager Instance;
 
     WebSocket ws;
+    [Header("Prefabs")]
     public GameObject playerPrefab;
     public GameObject bulletPrefab;
     public GameObject hitVFXPrefab;
+
+    [Header("GUI stuff")]
     public TMP_Text roomDisplayText;
     public TMP_InputField roomInput;
     public TMP_InputField nameInput;
@@ -23,6 +26,7 @@ public class NetwokManager : MonoBehaviour
     public Animator errorMessageAnimator;
     public Slider myHealthSlider;
     public TextMeshProUGUI nameText;
+    public TMP_Text errorText;
 
     [SerializeField] private GameEndHandler gameEndHandler;
 
@@ -34,9 +38,6 @@ public class NetwokManager : MonoBehaviour
     private Dictionary<int, GameObject> bullets = new();
     Dictionary<int, GameObject> activeBullets = new();
 
-    private PlayerAnimationHandler myPlayerAnimationhandler;
-
-    int bulletIdCounter = 0;
 
     async void Awake()
     {
@@ -90,6 +91,8 @@ public class NetwokManager : MonoBehaviour
         ws.SendText(JsonConvert.SerializeObject(msg));
     }
 
+    // json msg handler
+    #region Handle Messages
     void HandleMessage(string msg)
     {
         var json = JsonConvert.DeserializeObject<Dictionary<string, object>>(msg);
@@ -111,13 +114,15 @@ public class NetwokManager : MonoBehaviour
             roomCode = json["roomCode"].ToString();
             roomDisplayText.text = "Room: " + roomCode;
         }
-        else if (type == "noRoom")
+        else if (type == "errorRoom")
         {
+            errorText.text = json["msg"].ToString();
             errorMessageAnimator.SetTrigger("Start");
         }
         else if (type == "init" || type == "newPlayerConnected")
         {
             var playerData = json["players"].ToString();
+             
             var dict = JsonConvert.DeserializeObject<Dictionary<string, Position>>(playerData);
             foreach (var kv in dict)
             {
@@ -127,20 +132,33 @@ public class NetwokManager : MonoBehaviour
                     players[kv.Key] = go;
                     if (kv.Key != myPlayerId)
                     {
+                        string playerName = kv.Value.name;
                         go.GetComponent<PlayerInput>().DeactivateCameraObject();
                         go.GetComponent<PlayerInput>().enabled = false;
+                        go.GetComponent<CanvasFacingCamera>().enabled = false;
+                        go.GetComponent<PlayerCanvasHandler>().SetHealth(kv.Value.health);
+                        go.GetComponent<PlayerCanvasHandler>().Setname(playerName);
                     }
                     else
                     {
-                        myPlayerAnimationhandler = go.GetComponent<PlayerAnimationHandler>();
+                        go.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();                      
                     }
                 }
                 var p = players[kv.Key];
                 p.transform.position = new Vector3(kv.Value.x, kv.Value.y, kv.Value.z);
                 p.transform.rotation = Quaternion.Euler(0, kv.Value.rotationY, 0);
+            }
 
-                /*var slider = p.GetComponentInChildren<Slider>();
-                slider.value = kv.Value.health / 100f;*/
+            foreach (KeyValuePair<string, GameObject> kvp in players)
+            {
+                if (kvp.Key == myPlayerId)
+                {
+                }
+                else
+                {
+                    GameObject otherPlayerGO = kvp.Value;
+                    players[myPlayerId].GetComponent<CanvasFacingCamera>().AddCanvas(otherPlayerGO.GetComponent<PlayerCanvasHandler>().GetCanvasgameObject());
+                }
             }
         }
         else if (type == "stateUpdate")
@@ -159,8 +177,8 @@ public class NetwokManager : MonoBehaviour
 
                 if (kv.Key == myPlayerId)
                     myHealthSlider.value = kv.Value.health / 100f;
-                /*else
-                    pgo.GetComponentInChildren<Slider>().value = kv.Value.health / 100f;*/
+                else
+                    pgo.GetComponent<PlayerCanvasHandler>().SetHealth(kv.Value.health);
             }
 
             var bulletData = JsonConvert.SerializeObject(json["bullets"]);
@@ -191,8 +209,8 @@ public class NetwokManager : MonoBehaviour
             {
                 if (targetId == myPlayerId)
                     myHealthSlider.value = newHealth / 100f;
-                /*else
-                    players[targetId].GetComponentInChildren<Slider>().value = newHealth / 100f;*/
+                else
+                    players[targetId].GetComponent<PlayerCanvasHandler>().SetHealth(newHealth / 100f);
             }
         }
         else if (type == "playerWon")
@@ -207,8 +225,19 @@ public class NetwokManager : MonoBehaviour
                 gameEndHandler.GameEnd(winnerName);
             }
         }
+        else if (type == "playerDisconnected")
+        {
+            string playerId = json["playerId"].ToString();
+            GameObject removedPlayerob = players[playerId];
+            players[myPlayerId].GetComponent<CanvasFacingCamera>().RemoveCanvas(removedPlayerob.GetComponent<PlayerCanvasHandler>().GetCanvasgameObject());
+            removedPlayerob.SetActive(false);
+        }
     }
 
+    #endregion
+
+
+    // bullet spawn and position update
     void SyncBullets(List<BulletState> serverBullets)
     {
         HashSet<int> serverIds = new();
@@ -220,10 +249,7 @@ public class NetwokManager : MonoBehaviour
             {
                 GameObject go = Instantiate(bulletPrefab);
                 bullets[b.id] = go;
-                /*if(b.ownerId == myPlayerId)
-                {
-                    myPlayerAnimationhandler.EnableShootAnimation();
-                }*/
+
 
                 players[b.ownerId].GetComponent<PlayerAnimationHandler>().EnableShootAnimation();
             }
@@ -250,7 +276,11 @@ public class NetwokManager : MonoBehaviour
 
 
 
-    class Position { public float x, y, z, rotationY, forward, right, health; }
+    class Position 
+    { 
+        public float x, y, z, rotationY, forward, right, health;
+        public string name;
+    }
     class Pos { public float x, y, z; }
 
     class BulletState
