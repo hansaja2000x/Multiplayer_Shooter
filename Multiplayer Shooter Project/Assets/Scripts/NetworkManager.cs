@@ -18,6 +18,9 @@ public class NetwokManager : MonoBehaviour
     public TMP_InputField roomInput;
     public TMP_InputField nameInput;
     public GameObject UICamera;
+    public GameObject MenuUI;
+    public GameObject GameplayUI;
+    public Animator errorMessageAnimator;
     public Slider myHealthSlider;
     public TextMeshProUGUI nameText;
 
@@ -100,11 +103,17 @@ public class NetwokManager : MonoBehaviour
             Debug.Log("My Player ID: " + myPlayerId);
             nameText.text = myName;
             UICamera.SetActive(false);
+            MenuUI.SetActive(false);
+            GameplayUI.SetActive(true);
         }
         else if (type == "roomJoined")
         {
             roomCode = json["roomCode"].ToString();
             roomDisplayText.text = "Room: " + roomCode;
+        }
+        else if (type == "noRoom")
+        {
+            errorMessageAnimator.SetTrigger("Start");
         }
         else if (type == "init" || type == "newPlayerConnected")
         {

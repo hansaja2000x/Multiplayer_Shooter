@@ -231,13 +231,18 @@ server.on('connection', ws => {
           sockets: [ws],
           bullets: [],
           obstacles: [
-            { x: 2, y: 0, z: 2, size: { x: 1, y: 1, z: 1 }, rotationY: 0 },
-            { x: -1, y: 0, z: -3, size: { x: 2, y: 1, z: 2 }, rotationY: 45 },
-            { x: 0, y: 0, z: 5, size: { x: 1, y: 1, z: 1 }, rotationY: 30 }
+            { x: -12.54, y: 1.1039, z: 16.4442, size: { x: 1, y: 3.2078, z: 33.2798 }, rotationY: 0 },
+            { x: 11.87, y: 1.1039, z: 0, size: { x: 1, y: 3.2078, z: 33.27982 }, rotationY: 0 },
+            { x: -0.396, y: 1.1459, z: 32.05, size: { x: 24.65454, y: 3.2919, z: 1 }, rotationY: 0 },
+            { x: -0.396, y: 1.1459, z: -0.488, size: { x: 24.65454, y: 3.2919, z: 1 }, rotationY: 0 },
+            { x: -1.0753, y: 1.097, z: 10.0101, size: { x: 1.415077, y: 2.326, z: 1.304252 }, rotationY: 0 },
+            { x: 5.0897, y: 1.097, z: 14.7271, size: { x: 1.683031, y: 2.326, z: 1.561712 }, rotationY: 0 },
+            { x: 2.1335, y: 1.1437, z: 22.028, size: { x: 1.856079, y: 2.419505, z: 2.153355 }, rotationY: 0 },
+            { x: -4.68, y: 1.1437, z: 16.2, size: { x: 1.856079, y: 2.419505, z: 2.153355 }, rotationY: 0 }
           ]
         };
 
-        const player = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0, health: 100, canShoot: true, name: data.name };
+        const player = { id: playerId, x: 0, y: 0, z: 2, rotationY: 0, forward: 0, right: 0, health: 100, canShoot: true, name: data.name };
         rooms[roomCode].players[playerId] = player;
         playerName = player.name;
         ws.send(JSON.stringify({ type: 'yourId', id: playerId, name: playerName }));
@@ -248,9 +253,12 @@ server.on('connection', ws => {
       else if (data.type === 'joinRoom') {
         roomCode = data.roomCode;
         const room = rooms[roomCode];
-        if (!room) return ws.send(JSON.stringify({ type: 'error', msg: 'Room not found' }));
+        if (!room) {
+          ws.send(JSON.stringify({ type: 'noRoom' }))
+          return ws.send(JSON.stringify({ type: 'error', msg: 'Room not found' }));
+        }
 
-        const player = { id: playerId, x: 0, y: 0, z: 0, rotationY: 0, forward: 0, right: 0, health: 100, canShoot: true, name: data.name };
+        const player = { id: playerId, x: 0, y: 0, z: 29.33, rotationY: 178.27, forward: 0, right: 0, health: 100, canShoot: true, name: data.name };
         room.players[playerId] = player;
         room.sockets.push(ws);
 
