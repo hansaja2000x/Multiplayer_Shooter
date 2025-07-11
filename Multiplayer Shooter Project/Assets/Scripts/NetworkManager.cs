@@ -192,11 +192,9 @@ public class NetwokManager : MonoBehaviour
             string loserId = json["loserId"].ToString();
             if (players.ContainsKey(loserId))
             {
-                if (loserId == myPlayerId)
-                {
-                    myPlayerAnimationhandler.DeathAnimation();
-                }
 
+                players[loserId].GetComponent<PlayerAnimationHandler>().DeathAnimation();
+                players[myPlayerId].GetComponent<PlayerInput>().EndGame();
                 gameEndHandler.GameEnd(winnerName);
             }
         }
@@ -213,11 +211,12 @@ public class NetwokManager : MonoBehaviour
             {
                 GameObject go = Instantiate(bulletPrefab);
                 bullets[b.id] = go;
-                if(b.ownerId == myPlayerId)
+                /*if(b.ownerId == myPlayerId)
                 {
                     myPlayerAnimationhandler.EnableShootAnimation();
-                }
-                
+                }*/
+
+                players[b.ownerId].GetComponent<PlayerAnimationHandler>().EnableShootAnimation();
             }
 
             GameObject bulletGO = bullets[b.id];

@@ -14,22 +14,30 @@ public class PlayerInput : MonoBehaviour
 
     void Update()
     {
-        bool forward = Input.GetKey(KeyCode.W);
-        bool backward = Input.GetKey(KeyCode.S);
-        bool left = Input.GetKey(KeyCode.A);
-        bool right = Input.GetKey(KeyCode.D);
+        if (isCursorLocked)
+        {
+            bool forward = Input.GetKey(KeyCode.W);
+            bool backward = Input.GetKey(KeyCode.S);
+            bool left = Input.GetKey(KeyCode.A);
+            bool right = Input.GetKey(KeyCode.D);
 
-        float mouseDeltaX = Input.GetAxis("Mouse X") * 5f;
+            float mouseDeltaX = Input.GetAxis("Mouse X") * 5f;
 
-        NetwokManager.Instance.SendInput(forward, backward, left, right, mouseDeltaX);
+            NetwokManager.Instance.SendInput(forward, backward, left, right, mouseDeltaX);
 
-        if (Input.GetMouseButtonDown(0))
-            NetwokManager.Instance.SendShoot();
+            if (Input.GetMouseButtonDown(0))
+                NetwokManager.Instance.SendShoot();
+        }
     }
 
     public void DeactivateCameraObject()
     {
         cameraObj.SetActive(false);
+    }
+
+    public void EndGame()
+    {
+        UnlockCursor();
     }
 
     private void LockCursor()
@@ -38,4 +46,13 @@ public class PlayerInput : MonoBehaviour
         Cursor.visible = false;
         isCursorLocked = true;
     }
+
+    private void UnlockCursor()
+    {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        isCursorLocked = false;
+    }
+
+
 }

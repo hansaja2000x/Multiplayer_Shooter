@@ -6,6 +6,12 @@ public class PlayerAnimationHandler : MonoBehaviour
 {
     [SerializeField] private Animator playerAnimator;
 
+    [SerializeField] private AudioSource footAudio;
+    [SerializeField] private AudioClip footAudioClip;
+
+    [SerializeField] private AudioSource laserGunAudio;
+    [SerializeField] private AudioClip laserGunAudioClip;
+
     public void SetAnimState(float forward, float right)
     {
         playerAnimator.SetFloat("MoveX", right );
@@ -26,5 +32,15 @@ public class PlayerAnimationHandler : MonoBehaviour
     public void DeathAnimation()
     {
         playerAnimator.SetTrigger("Death");
+    }
+
+    public void PlayFootAudio()
+    {
+        footAudio.PlayOneShot(footAudioClip);
+    }
+
+    public void PlayShootAudio()
+    {
+        laserGunAudio.PlayOneShot(laserGunAudioClip);
     }
 }
