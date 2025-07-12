@@ -11,23 +11,25 @@ public class NetworkManager : MonoBehaviour
 {
     public static NetworkManager Instance;
 
-    // -------- Inspector references --------
-    public TMP_InputField inputName;
-    public TMP_InputField inputRoomCode;
-    public TMP_Text txtRoomDisplay;
-    public TMP_Text txtErrorMessage;
-    public GameObject menuUI;
-    public GameObject gameplayUI;
-    public GameObject UICamera;
-    public Slider healthSlider;
-    public TextMeshProUGUI playerNameText;
-    public GameEndHandler gameEndHandler;
-    public Animator errorAnimator;
+    // -------- Inspector references for UI --------
+    [SerializeField] private TMP_InputField inputName;
+    [SerializeField] private TMP_InputField inputRoomCode;
+    [SerializeField] private TMP_Text txtRoomDisplay;
+    [SerializeField] private TMP_Text txtErrorMessage;
+    [SerializeField] private GameObject menuUI;
+    [SerializeField] private GameObject gameplayUI;
+    [SerializeField] private GameObject UICamera;
+    [SerializeField] private Slider healthSlider;
+    [SerializeField] private TextMeshProUGUI playerNameText;
+    [SerializeField] private GameEndHandler gameEndHandler;
+    [SerializeField] private Animator errorAnimator;
+
+    [SerializeField] private GameObject lobbyRobo;
 
     [Header("Prefabs")]
-    public GameObject playerPrefab;
-    public GameObject bulletPrefab;
-    public GameObject hitVFXPrefab;
+    [SerializeField] private GameObject playerPrefab;
+    [SerializeField] private GameObject bulletPrefab;
+    [SerializeField] private GameObject hitVFXPrefab;
 
     // -------- Internal state --------
     private Socket socket;
@@ -116,6 +118,7 @@ public class NetworkManager : MonoBehaviour
         myPlayerId = d.id;
         playerNameText.text = d.name;
         menuUI.SetActive(false);
+        lobbyRobo.SetActive(false);
         gameplayUI.SetActive(true);
         UICamera.SetActive(false);
     }
