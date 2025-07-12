@@ -15,14 +15,14 @@ public class PlayerCanvasHandler : MonoBehaviour
         otherPlayerCanvas.SetActive(false);
     }
 
-    public void Setname(string name)
+    public void SetName(string name)
     {
         playerName.text = name;
     }
 
     public void SetHealth(float value)
     {
-        healthSlider.value = value / 100f;
+        healthSlider.value = value ;
     }
 
     public GameObject GetCanvasgameObject()

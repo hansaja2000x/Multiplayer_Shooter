@@ -6,6 +6,9 @@ public class PlayerInput : MonoBehaviour
     private float lastMouseX;
     private bool isCursorLocked = false;
 
+    private bool fLast, bLast, lLast, rLast;
+    private float rotLast;
+
     void Start()
     {
         lastMouseX = Input.mousePosition.x;
@@ -14,20 +17,23 @@ public class PlayerInput : MonoBehaviour
 
     void Update()
     {
-        if (isCursorLocked)
+        if (!isCursorLocked) return;
+
+        bool f = Input.GetKey(KeyCode.W);
+        bool b = Input.GetKey(KeyCode.S);
+        bool l = Input.GetKey(KeyCode.A);
+        bool r = Input.GetKey(KeyCode.D);
+        float rot = Input.GetAxis("Mouse X") * 5f;
+
+        // Send only if changed
+        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0000001f)
         {
-            bool forward = Input.GetKey(KeyCode.W);
-            bool backward = Input.GetKey(KeyCode.S);
-            bool left = Input.GetKey(KeyCode.A);
-            bool right = Input.GetKey(KeyCode.D);
-
-            float mouseDeltaX = Input.GetAxis("Mouse X") * 5f;
-
-            NetwokManager.Instance.SendInput(forward, backward, left, right, mouseDeltaX);
-
-            if (Input.GetMouseButtonDown(0))
-                NetwokManager.Instance.SendShoot();
+            NetworkManager.Instance.SendInput(f, b, l, r, rot);
+            fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot;
         }
+
+        if (Input.GetMouseButtonDown(0))
+            NetworkManager.Instance.SendShoot();
     }
 
     public void DeactivateCameraObject()
@@ -52,6 +58,7 @@ public class PlayerInput : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         isCursorLocked = false;
+        NetworkManager.Instance.SendInput(false, false, false, false, 0);
     }
 
 

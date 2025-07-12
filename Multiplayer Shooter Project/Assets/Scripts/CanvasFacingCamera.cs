@@ -29,6 +29,7 @@ public class CanvasFacingCamera : MonoBehaviour
 
     public void AddCanvas(GameObject canvas)
     {
+        print("added");
         if (!worldCanvases.Contains(canvas))
             worldCanvases.Add(canvas);
     }
