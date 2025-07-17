@@ -5,9 +5,9 @@ var SocketPlugin = {
         sockets: new Map(),
         //send to unity stuff
         CallUnityEvent: function(id, event, data) {
-            var JsonData = null
-            if(data != null) {
-                JsonData = data
+            var JsonData = null;
+            if (data != null) {
+                JsonData = data;
             }
             unityInstance.SendMessage(Data.SocketGameObjectName, 'callSocketEvent', JSON.stringify({
                 EventName: event,
@@ -18,12 +18,12 @@ var SocketPlugin = {
     },
 
     SetupGameObjectName: function(str) {
-        Data.SocketGameObjectName = Pointer_stringify(str);
+        Data.SocketGameObjectName = UTF8ToString(str);
         Data.sockets = new Map();
     },
 
     GetProtocol: function() {
-        if(io != undefined)
+        if (typeof io !== "undefined")
             return io.getProtocol;
         else {
             console.error("SocketIO io object not found! Did you forget to include Reference in header?");
@@ -32,25 +32,22 @@ var SocketPlugin = {
     },
 
     EstablishSocket: function(url_raw, options_raw) {
-        if(io != undefined) {
-            const url = Pointer_stringify(url_raw);
-            const options = Pointer_stringify(options_raw); //string of user options selected
+        if (typeof io !== "undefined") {
+            const url = UTF8ToString(url_raw);
+            const options = UTF8ToString(options_raw);
 
             var soc;
-            if(options.length > 0) 
+            if (options.length > 0)
                 soc = io(url, JSON.parse(options));
-            else 
+            else
                 soc = io(url);
-            
+
             var id = 0;
             do {
-                //generate an id between 1 and 10000
                 id = Math.floor(Math.random() * 10000) + 1;
-            } while(Data.sockets.has(id));
+            } while (Data.sockets.has(id));
 
             Data.sockets.set(id, soc);
-
-            var cur = this;
 
             soc.onAny(function(event, args) {
                 Data.CallUnityEvent(id, event, args);
@@ -62,8 +59,6 @@ var SocketPlugin = {
             throw new Error("SocketIO object not found! Did you forget to include Reference in header?");
         }
     },
-
-    //Socket Object stuff
 
     Socket_IsConnected: function(id) {
         return Data.sockets.get(id).connected;
@@ -77,26 +72,21 @@ var SocketPlugin = {
         Data.sockets.get(id).disconnect();
     },
 
-    // Socket_Send: function(id, data_raw) {
-    //     if(data_raw != null)
-    //         Data.sockets.get(id).send(JSON.parse(Pointer_stringify(data_raw)));
-    //     else 
-    //         Data.sockets.get(id).send(null);
-    // },
-
     Socket_Emit: function(id, event_raw, data_raw) {
-        if(Pointer_stringify(data_raw).length == 0) {
-            Data.sockets.get(id).emit(Pointer_stringify(event_raw), null);
+        const eventName = UTF8ToString(event_raw);
+        const payload = UTF8ToString(data_raw);
+        if (payload.length == 0) {
+            Data.sockets.get(id).emit(eventName, null);
         } else {
-            Data.sockets.get(id).emit(Pointer_stringify(event_raw), Pointer_stringify(data_raw));
+            Data.sockets.get(id).emit(eventName, payload);
         }
     },
 
     Socket_Get_Conn_Id: function(id) {
         var result = Data.sockets.get(id).id;
-        if(result != undefined) {
-            var buffersize = lengthBytesUTF8(result) + 1;
-            var buffer = _malloc(buffersize);
+        if (result !== undefined) {
+            var bufferSize = lengthBytesUTF8(result) + 1;
+            var buffer = _malloc(bufferSize);
             stringToUTF8(result, buffer, bufferSize);
             return buffer;
         } else {
@@ -104,5 +94,6 @@ var SocketPlugin = {
         }
     },
 };
+
 autoAddDeps(SocketPlugin, "$Data");
 mergeInto(LibraryManager.library, SocketPlugin);
