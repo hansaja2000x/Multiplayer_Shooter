@@ -23,7 +23,8 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI playerNameText;
     [SerializeField] private GameEndHandler gameEndHandler;
     [SerializeField] private Animator errorAnimator;
-
+    [SerializeField] private Button shootButton;
+    [SerializeField] private VariableJoystick variableJoystick;
     [SerializeField] private GameObject lobbyRobo;
 
     [Header("Prefabs")]
@@ -31,6 +32,8 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private GameObject hitVFXPrefab;
 
+    [Header("Game Type")]
+    [SerializeField] private bool isOnPC;
     // -------- Internal state --------
     private Socket socket;
     private string myPlayerId;
@@ -256,6 +259,7 @@ public class NetworkManager : MonoBehaviour
                 }
                 else
                 {
+                    
                     go.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();
                 }
             }
@@ -275,6 +279,10 @@ public class NetworkManager : MonoBehaviour
             {
                 pgo.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();
                 healthSlider.value = pd.health / 100f;
+                PlayerInput playerInput = pgo.GetComponent<PlayerInput>();
+                playerInput.SetShootButton(shootButton);
+                playerInput.SetVariableJoystick(variableJoystick);
+                playerInput.SetIsOnPC(isOnPC);
             }
 
             pgo.transform.position = new Vector3(pd.x, pd.y, pd.z);
@@ -301,6 +309,10 @@ public class NetworkManager : MonoBehaviour
             }
             else
             {
+                PlayerInput playerInput = pgo.GetComponent<PlayerInput>();
+                playerInput.SetShootButton(shootButton);
+                playerInput.SetVariableJoystick(variableJoystick);
+                playerInput.SetIsOnPC(isOnPC);
                 pgo.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();
                 healthSlider.value = pd.health / 100f;
             }
@@ -331,6 +343,10 @@ public class NetworkManager : MonoBehaviour
                 }
                 else
                 {
+                    PlayerInput playerInput = go.GetComponent<PlayerInput>();
+                    playerInput.SetShootButton(shootButton);
+                    playerInput.SetVariableJoystick(variableJoystick);
+                    playerInput.SetIsOnPC(isOnPC);
                     go.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();
                 }
             }
