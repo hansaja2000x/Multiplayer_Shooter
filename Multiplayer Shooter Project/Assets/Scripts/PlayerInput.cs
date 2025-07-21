@@ -87,15 +87,41 @@ public class PlayerInput : MonoBehaviour
         {
             if (Mathf.Abs(vertical) / Mathf.Abs(horizontal) > 2.093f)
             {
-                 f = variableJoystick.Vertical > 0 ? true : false;
-                 b = variableJoystick.Vertical < 0 ? true : false;
+
+                if(variableJoystick.Vertical > 0)
+                {
+                    f = true;
+                    b = false;
+                }
+                else if(variableJoystick.Vertical < 0)
+                {
+                    f = false;
+                    b = true;
+                }
             }
             else
             {
-                 f = variableJoystick.Vertical > 0 ? true : false;
-                 b = variableJoystick.Vertical < 0 ? true : false;
-                 r = variableJoystick.Horizontal > 0 ? true : false;
-                 l = variableJoystick.Horizontal < 0 ? true : false;
+                if (variableJoystick.Vertical > 0)
+                {
+                    f = true;
+                    b = false;
+                }
+                else if (variableJoystick.Vertical < 0)
+                {
+                    f = false;
+                    b = true;
+                }
+
+                if (variableJoystick.Horizontal > 0)
+                {
+                    r = true;
+                    l = false;
+                }
+                else if (variableJoystick.Horizontal < 0)
+                {
+                    r = false;
+                    l = true;
+                }
             }
         }
 
@@ -103,23 +129,50 @@ public class PlayerInput : MonoBehaviour
         {
             if (Mathf.Abs(horizontal) / Mathf.Abs(vertical) > 2.093f)
             {
-                 r = variableJoystick.Horizontal > 0 ? true : false;
-                 l = variableJoystick.Horizontal < 0 ? true : false;
+                if (variableJoystick.Horizontal > 0)
+                {
+                    r = true;
+                    l = false;
+                }
+                else if (variableJoystick.Horizontal < 0)
+                {
+                    r = false;
+                    l = true;
+                }
             }
             else
             {
-                 f = variableJoystick.Vertical > 0 ? true : false;
-                 b = variableJoystick.Vertical < 0 ? true : false;
-                 r = variableJoystick.Horizontal > 0 ? true : false;
-                 l = variableJoystick.Horizontal < 0 ? true : false;
+                if (variableJoystick.Vertical > 0)
+                {
+                    f = true;
+                    b = false;
+                }
+                else if (variableJoystick.Vertical < 0)
+                {
+                    f = false;
+                    b = true;
+                }
+
+                if (variableJoystick.Horizontal > 0)
+                {
+                    r = true;
+                    l = false;
+                }
+                else if (variableJoystick.Horizontal < 0)
+                {
+                    r = false;
+                    l = true;
+                }
             }
         }
 
-        if (Input.touchCount > 0)
+        /*if (Input.touchCount > 0)
         {
             Touch touch = Input.GetTouch(0);
 
-            if (IsPointerOverScreenSpaceUI(touch)) return;
+            float screenBlockThreshold = Screen.width * 0.3f;
+            if (touch.position.x <= screenBlockThreshold)
+                return;
 
             if (touch.phase == TouchPhase.Began)
             {
@@ -129,17 +182,53 @@ public class PlayerInput : MonoBehaviour
             else if (touch.phase == TouchPhase.Moved && isTouching)
             {
                 float deltaX = touch.position.x - lastTouchX;
-                rot = deltaX * 0.05f; 
+                rot = deltaX * 0.35f; 
                 lastTouchX = touch.position.x;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
+                rot = 0.0000001f;
                 isTouching = false;
+            }
+        }*/
+
+        if (Input.touchCount > 0)
+        {
+            float screenBlockThreshold = Screen.width * 0.3f;
+
+            // Find a touch on the right side (above 30% of screen width)
+            for (int i = 0; i < Input.touchCount; i++)
+            {
+                Touch touch = Input.GetTouch(i);
+
+                if (touch.position.x <= screenBlockThreshold)
+                    continue;
+
+                if (touch.phase == TouchPhase.Began)
+                {
+                    lastTouchX = touch.position.x;
+                    isTouching = true;
+                }
+                else if (touch.phase == TouchPhase.Moved && isTouching)
+                {
+                    float deltaX = touch.position.x - lastTouchX;
+                    rot = deltaX * 0.35f;
+                    lastTouchX = touch.position.x;
+                }
+                else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+                {
+                    rot = 0.0000001f;
+                    isTouching = false;
+                }
+
+                // We found the right-side touch to handle — break to avoid conflicting touches
+                break;
             }
         }
 
+
         // Send only if changed
-        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0000001f)
+        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) >= 0.0000001f)
         {
             NetworkManager.Instance.SendInput(f, b, l, r, rot);
             fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot;
@@ -150,27 +239,6 @@ public class PlayerInput : MonoBehaviour
 
     }
 
-    private bool IsPointerOverScreenSpaceUI(Touch touch)
-    {
-        PointerEventData pointerData = new PointerEventData(EventSystem.current)
-        {
-            position = touch.position
-        };
-
-        List<RaycastResult> raycastResults = new List<RaycastResult>();
-        EventSystem.current.RaycastAll(pointerData, raycastResults);
-
-        foreach (RaycastResult result in raycastResults)
-        {
-            Canvas canvas = result.gameObject.GetComponentInParent<Canvas>();
-            if (canvas != null && canvas.renderMode != RenderMode.WorldSpace)
-            {
-                return true; 
-            }
-        }
-
-        return false;
-    }
 
     // Setters
     private void OnShootButtonClicked()

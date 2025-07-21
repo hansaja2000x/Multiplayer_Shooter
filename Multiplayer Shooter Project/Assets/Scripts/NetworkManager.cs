@@ -6,6 +6,7 @@ using TMPro;
 using UnityEngine.UI;
 using KyleDulce.SocketIo;   
 using Newtonsoft.Json;
+using System.Collections;
 
 public class NetworkManager : MonoBehaviour
 {
@@ -54,14 +55,32 @@ public class NetworkManager : MonoBehaviour
     private void Start()
     {
         Debug.Log("About to connect socket...");
-        socket = SocketIo.establishSocketConnection("ws://localhost:3000");
+        //socket = SocketIo.establishSocketConnection("ws://localhost:3000");
+        socket = SocketIo.establishSocketConnection("ws://192.168.1.3:3000");
 
         RegisterEvents();
-        socket.connect();  
+        socket.connect();
         Debug.Log("Socket connect() called");
 
         menuUI.SetActive(true);
         gameplayUI.SetActive(false);
+
+        StartCoroutine(WaitForSocketConnection());
+
+
+
+
+    }
+
+    private IEnumerator WaitForSocketConnection()
+    {
+        while (!socket.connected) 
+        {
+            yield return null;
+        }
+
+        Debug.Log("Socket connected!");
+        JoinRoom();
     }
 
     private void Update()
@@ -209,17 +228,61 @@ public class NetworkManager : MonoBehaviour
          Emit("createRoom", new { name = inputName.text });
     }
 
-    public  void JoinRoom()
+    public void JoinRoom()
     {
-        if (string.IsNullOrWhiteSpace(inputName.text) ||
+        /*if (string.IsNullOrWhiteSpace(inputName.text) ||
             string.IsNullOrWhiteSpace(inputRoomCode.text))
         {
             txtErrorMessage.text = "Enter name & room code!";
             errorAnimator.SetTrigger("Start");
             return;
         }
-         Emit("joinRoom", new { roomCode = inputRoomCode.text, name = inputName.text });
+        Emit("joinRoom", new { roomCode = inputRoomCode.text, name = inputName.text });*/
+
+        var urlParams = GetUrlParameters();
+
+        if (urlParams.ContainsKey("gameSessionUuid") && urlParams.ContainsKey("uuid"))
+        {
+            string roomCode = urlParams["gameSessionUuid"];
+            string playerUuId = urlParams["uuid"];
+
+            JoinRoomWithParams(roomCode, playerUuId);
+        }
+        else
+        {
+            Debug.Log("No URL parameters found — falling back to manual join.");
+        }
     }
+
+    private Dictionary<string, string> GetUrlParameters()
+    {
+        string url = Application.absoluteURL;
+        var result = new Dictionary<string, string>();
+
+        if (string.IsNullOrEmpty(url) || !url.Contains("?"))
+            return result;
+
+        string[] parts = url.Split('?');
+        if (parts.Length < 2) return result;
+
+        string[] parameters = parts[1].Split('&');
+        foreach (string param in parameters)
+        {
+            string[] keyValue = param.Split('=');
+            if (keyValue.Length == 2)
+            {
+                result[Uri.UnescapeDataString(keyValue[0])] = Uri.UnescapeDataString(keyValue[1]);
+            }
+        }
+
+        return result;
+    }
+
+    public void JoinRoomWithParams(string roomCode, string playerName)
+    {
+        Emit("joinRoom", new { roomCode = roomCode, uuId = playerName });
+    }
+
 
     public void SendInput(bool f, bool b, bool l, bool r, float rotDelta)
     {
@@ -422,6 +485,7 @@ public class NetworkManager : MonoBehaviour
         public float rotationY;
         public float forward, right;
         public float health;
+        public string uuId;
         public string name;
     }
 

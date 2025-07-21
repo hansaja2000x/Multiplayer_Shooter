@@ -1,9 +1,11 @@
 const express = require("express");
 const app     = express();
 const port    = 3000;
+app.use(express.json());
 
 const server  = require("http").Server(app);
-server.listen(port, () => console.log("Server listening at port " + port));
+//server.listen(port, () => console.log("Server listening at port " + port));
+server.listen(port, "0.0.0.0", () => console.log("Server listening at http://0.0.0.0:" + port));
 
 const io = require("socket.io")(server, { cors: { origin: "*" } });
 
@@ -18,6 +20,7 @@ const playerSize    = { x: 0.9, y: 1, z: 0.9 };
 const TICK_RATE     = 60;
 const MAX_PLAYERS   = 2;
 let   globalBulletId = 0;
+const disconnectTimeouts = {};
 
 // -------- simulated object handlers --------
 function degToRad(d) { return d * (Math.PI / 180); }
@@ -60,17 +63,21 @@ function checkCollision(candidate, room) {
 }
 // -----------------------------------------------------------------------------
 
-io.on("connection", socket => {
-  let roomCode = null;
+// API endpoint for room creation (via HTTP POST)
+app.post("/api/createRoom", (req, res) => {
+  try {
+    const { room, players } = req.body;
+    const roomCode = room.gameSessionUuid;
 
-  // ---------------- createRoom ----------------
-  socket.on("createRoom", raw => {
-    const { name } = parse(raw);
-    if (!name) return;
+    if (rooms[roomCode]) {
+      return res.status(400).json({ status: false, message: "Game session already exists" });
+    }
 
-    roomCode = (Math.floor(1000 + Math.random() * 9000)).toString();
+    // Setup room
     rooms[roomCode] = {
-      players: {}, latestInputs: {}, bullets: [],
+      players: {},
+      latestInputs: {},
+      bullets: [],
       obstacles: [
         { x: -12.54, y: 1.1039, z: 16.4442, size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0 },
         { x: 11.87,  y: 1.1039, z: 0,       size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0 },
@@ -80,39 +87,176 @@ io.on("connection", socket => {
         { x: 5.0897, y: 1.097,  z: 14.7271, size: { x: 1.683, y: 2.326, z: 1.562 }, rotationY: 0 },
         { x: 2.1335, y: 1.1437, z: 22.028,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0 },
         { x: -4.68,  y: 1.1437, z: 16.2,    size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0 }
-      ]
+      ],
+      allowedPlayers: players.map(p => p.uuid),
+      isPlaying: false
     };
-    socket.join(roomCode);
 
-    const p = { id: socket.id, x: 0, y: 0, z: 2, rotationY: 0,
-                forward: 0, right: 0, health: 100, canShoot: true, name };
-    rooms[roomCode].players[socket.id] = p;
+    const responseData = {
+      status: true,
+      message: "success",
+      payload: {
+        gameSessionUuid: roomCode,
+        gameStateId: roomCode,
+        name: room.name,
+        createDate: new Date(),
+        link1: `http://192.168.1.3:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
+        link2: `http://192.168.1.3:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
+      }
+    };
 
-    emitJSON(socket, "yourId",     { id: socket.id, name });
-    emitJSON(socket, "roomJoined", { roomCode });
-    emitJSON(socket, "init",       { players: rooms[roomCode].players });
-  });
+    rooms[roomCode].allowedPlayers = players.map(p => p.uuid);
+    rooms[roomCode].playerInfo = players.reduce((acc, player) => {
+      acc[player.uuid] = player.name;
+      return acc;
+    }, {});
+    res.status(200).json(responseData);
+  } catch (err) {
+    console.error("Error creating room:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+io.on("connection", socket => {
+  let roomCode = null;
+
+  // ---------------- createRoom ----------------
+
+ 
+
+
+  // socket.on("createRoom", raw => {
+  //   const { name } = parse(raw);
+  //   if (!name) return;
+
+  //   roomCode = (Math.floor(1000 + Math.random() * 9000)).toString();
+  //   rooms[roomCode] = {
+  //     players: {}, latestInputs: {}, bullets: [],
+  //     obstacles: [
+  //       { x: -12.54, y: 1.1039, z: 16.4442, size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0 },
+  //       { x: 11.87,  y: 1.1039, z: 0,       size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0 },
+  //       { x: -0.396, y: 1.1459, z: 32.05,   size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0 },
+  //       { x: -0.396, y: 1.1459, z: -0.488,  size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0 },
+  //       { x: -1.0753,y: 1.097,  z: 10.0101, size: { x: 1.415, y: 2.326, z: 1.304 }, rotationY: 0 },
+  //       { x: 5.0897, y: 1.097,  z: 14.7271, size: { x: 1.683, y: 2.326, z: 1.562 }, rotationY: 0 },
+  //       { x: 2.1335, y: 1.1437, z: 22.028,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0 },
+  //       { x: -4.68,  y: 1.1437, z: 16.2,    size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0 }
+  //     ]
+  //   };
+  //   socket.join(roomCode);
+
+  //   const p = { id: socket.id, x: 0, y: 0, z: 2, rotationY: 0,
+  //               forward: 0, right: 0, health: 100, canShoot: true, name };
+  //   rooms[roomCode].players[socket.id] = p;
+
+  //   emitJSON(socket, "yourId",     { id: socket.id, name });
+  //   emitJSON(socket, "roomJoined", { roomCode });
+  //   emitJSON(socket, "init",       { players: rooms[roomCode].players });
+  // });
 
   // ---------------- joinRoom ----------------
   socket.on("joinRoom", raw => {
-    const { roomCode: code, name } = parse(raw);
+    const { roomCode: code, uuId } = parse(raw);
     const room = rooms[code];
+
     if (!room) return emitJSON(socket, "errorRoom", { msg: "Room not found" });
-    if (Object.keys(room.players).length >= MAX_PLAYERS)
+
+    if (!room.allowedPlayers.includes(uuId))
+      return emitJSON(socket, "errorRoom", { msg: "Player not allowed in this room" });
+
+    // Reconnection
+    const existingPlayerId = Object.keys(room.players).find(
+      id => room.players[id].uuId === uuId && room.players[id].disconnected
+    );
+
+    if(existingPlayerId){ 
+      roomCode = code;
+      socket.join(roomCode);
+      const p = {
+        id: socket.id,
+        x:  room.players[existingPlayerId].x,
+        y:  room.players[existingPlayerId].y,
+        z:  room.players[existingPlayerId].z,
+        rotationY:  room.players[existingPlayerId].rotationY,
+        forward: 0,
+        right: 0,
+        health:  room.players[existingPlayerId].health,
+        canShoot: true,
+        uuId: uuId,
+        name: room.playerInfo[uuId],
+        disconnected: false
+      };
+      room.players[socket.id] = p;
+    // Wait until 2 players have joined before starting game
+      if (Object.keys(room.players).length >= MAX_PLAYERS) {
+        // Send to both players
+        for (const playerId in room.players) {
+          const s = io.sockets.sockets.get(playerId);
+          if (s) {
+            emitJSON(s, "yourId", { id: s.id, name: room.players[s.id].name });
+            emitJSON(s, "init", { players: room.players });
+            emitJSON(s, "roomJoined", { roomCode });
+          }
+        }
+
+        roomBroadcast(roomCode, "newPlayerConnected", { players: room.players });
+        room.isPlaying = true;
+      }
+      delete room.players[existingPlayerId];
+        
+      roomBroadcast(roomCode, "playerDisconnected", { playerId: existingPlayerId });
+
+      if (Object.keys(room.players).length === 0) {
+        delete rooms[roomCode];
+      }
+    }
+    else if (Object.keys(room.players).length > MAX_PLAYERS){
       return emitJSON(socket, "errorRoom", { msg: "Room is full" });
+    }else{
+      roomCode = code;
+      socket.join(roomCode);
 
-    roomCode = code;
-    socket.join(roomCode);
+      // Determine spawn position based on current number of players
+      const numPlayers = Object.keys(room.players).length;
+      const spawnZ = numPlayers === 0 ? 29.33 : 2;
 
-    const p = { id: socket.id, x: 0, y: 0, z: 29.33, rotationY: 178.27,
-                forward: 0, right: 0, health: 100, canShoot: true, name };
-    room.players[socket.id] = p;
+      const p = {
+        id: socket.id,
+        x: 0,
+        y: 0,
+        z: spawnZ,
+        rotationY: 178.27,
+        forward: 0,
+        right: 0,
+        health: 100,
+        canShoot: true,
+        uuId: uuId,
+        name: room.playerInfo[uuId],
+        disconnected: false
+      };
 
-    emitJSON(socket, "yourId",     { id: socket.id, name });
-    emitJSON(socket, "init",       { players: room.players });
-    emitJSON(socket, "roomJoined", { roomCode });
-    roomBroadcast(roomCode, "newPlayerConnected", { players: room.players });
-  });
+      room.players[socket.id] = p;
+    // Wait until 2 players have joined before starting game
+    if (Object.keys(room.players).length >= MAX_PLAYERS) {
+      // Send to both players
+      for (const playerId in room.players) {
+        const s = io.sockets.sockets.get(playerId);
+        if (s) {
+          emitJSON(s, "yourId", { id: s.id, name: room.players[s.id].name });
+          emitJSON(s, "init", { players: room.players });
+          emitJSON(s, "roomJoined", { roomCode });
+        }
+      }
+
+      roomBroadcast(roomCode, "newPlayerConnected", { players: room.players });
+      room.isPlaying = true;
+    }
+   }
+
+    
+});
+
 
   // ---------------- move ----------------
   socket.on("move", raw => {
@@ -147,14 +291,27 @@ io.on("connection", socket => {
   socket.on("disconnect", () => {
     if (!roomCode || !rooms[roomCode]) return;
     const room = rooms[roomCode];
+    const player = room.players[socket.id];
+    if (!player) return;
 
-    delete room.players[socket.id];
+    // Mark player as temporarily disconnected
+    player.disconnected = true;
+
     delete room.latestInputs[socket.id];
-    roomBroadcast(roomCode, "playerDisconnected", { playerId: socket.id });
-
-    if (Object.keys(room.players).length === 0)
-      delete rooms[roomCode];
+    disconnectTimeouts[socket.id] = setTimeout(() => {
+      if (room.players[socket.id]?.disconnected) {
+        delete room.players[socket.id];       
+        remainingPlayerId = Object.keys(room.players)[0];
+        remainingPlayer = room.players[remainingPlayerId];
+        roomBroadcast(roomCode, "playerWon", {
+              winnerId: remainingPlayerId, loserId: socket.id,
+              winnerName: room.players[remainingPlayerId].name, loserName: "null"
+        });
+        delete rooms[roomCode];
+      }
+    }, 10000); // 10 seconds
   });
+
 });
 
 // -----------------------------------------------------------------------------
@@ -163,7 +320,7 @@ io.on("connection", socket => {
 setInterval(() => {
   for (const code in rooms) {
     const room = rooms[code];
-    if (!room) continue;
+    if (!room || room.isPlaying == false) continue;
 
     // Player movement
     for (const id in room.players) {
@@ -225,6 +382,7 @@ setInterval(() => {
               winnerId: b.ownerId, loserId: tid,
               winnerName: winner.name, loserName: t.name
             });
+            delete room;
           }
           return false;
         }
