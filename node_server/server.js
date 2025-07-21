@@ -86,7 +86,9 @@ function checkOBB(a, b) {
 }
 function checkCollision(candidate, room) {
   const obb = { ...candidate, size: playerSize };
-  for (const obs of room.obstacles) {
+
+  const allObstacles = room.obstacles.concat(room.movingObstacles);
+  for (const obs of allObstacles) {
     const obsOBB = {
       x: obs.x,
       y: obs.y,
@@ -98,6 +100,7 @@ function checkCollision(candidate, room) {
   }
   return false;
 }
+
 // -----------------------------------------------------------------------------
 
 // API endpoint for room creation (via HTTP POST)
@@ -126,8 +129,8 @@ app.post("/api/createRoom", (req, res) => {
         { x: -4.68,  y: 1.1437, z: 16.2,    size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0 }
       ],
       movingObstacles: [
-        { id: 0, x: 0.13,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.1 },
-        { id: 1, x: 7.94,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.15 }
+        { id: 0, x: 0.13,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5 },
+        { id: 1, x: 7.94,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7  }
       ],
       allowedPlayers: players.map(p => p.uuid),
       isPlaying: false
@@ -354,6 +357,21 @@ setInterval(() => {
       }
     }
 
+        // --- Update moving obstacles (Y-axis ping-pong) ---
+    for (const mob of room.movingObstacles) {
+      if (!mob.direction) mob.direction = 1; // 1 = up, -1 = down
+
+      mob.y += mob.speed * mob.direction;
+      if (mob.y > mob.endPoint) {
+        mob.y = mob.endPoint - 0.03;
+        mob.direction = -1;
+      } else if (mob.y < mob.startPoint) {
+        mob.y = mob.startPoint + 0.03;
+        mob.direction = 1;
+      }
+    }
+
+
     // Bullet updates
     room.bullets = room.bullets.filter(b => {
       b.x += Math.sin(degToRad(b.rotationY)) * 0.25;
@@ -371,6 +389,17 @@ setInterval(() => {
           return false;
         }
       }
+
+      // Moving obstacle hit
+      for (const mob of room.movingObstacles) {
+        const mobOBB = { x: mob.x, y: mob.y, z: mob.z, size: mob.size, rotationY: mob.rotationY || 0 };
+        if (checkOBB(bulletOBB, mobOBB)) {
+          roomBroadcast(code, "bulletHitObstacle", { bulletPos: { x: b.x, y: b.y, z: b.z } });
+          roomBroadcast(code, "bulletRemove",      { bulletId: b.id });
+          return false;
+        }
+      }
+
 
       // Player hit
       for (const tid in room.players) {
@@ -404,7 +433,11 @@ setInterval(() => {
       bullets: room.bullets.map(b => ({
         id: b.id, ownerId: b.ownerId,
         x: b.x, y: b.y, z: b.z, rotationY: b.rotationY
+      })),
+      movingObstacles: room.movingObstacles.map(m => ({
+        id: m.id, x: m.x, y: m.y, z: m.z
       }))
     });
+
   }
 }, 1000 / TICK_RATE);

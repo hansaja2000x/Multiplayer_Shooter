@@ -32,6 +32,7 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private GameObject playerPrefab;
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private GameObject hitVFXPrefab;
+    [SerializeField] private GameObject movingObstaclePrefab;
 
     [Header("Game Type")]
     [SerializeField] private bool isOnPC;
@@ -41,6 +42,7 @@ public class NetworkManager : MonoBehaviour
     private string currentRoomCode;
     private readonly Dictionary<string, GameObject> players = new();
     private readonly Dictionary<int, GameObject> bullets = new();
+    private readonly Dictionary<int, GameObject> movingObstacles = new();
     private readonly Queue<Action> mainThreadCalls = new();
 
     // -------------------------------------------------------------------------
@@ -162,6 +164,7 @@ public class NetworkManager : MonoBehaviour
     {
         UpdatePlayers(d.players);
         SyncBullets(d.bullets);
+        SyncMovingObstacles(d.movingObstacles);
     }
 
     private void OnBulletRemove(BulletRemoveResponse d)
@@ -465,6 +468,24 @@ public class NetworkManager : MonoBehaviour
             bullets.Remove(id);
         }
     }
+
+    private void SyncMovingObstacles(List<MovingObstacleData> mdata)
+    {
+        HashSet<int> serverIds = new();
+        foreach (MovingObstacleData m in mdata)
+        {
+            serverIds.Add(m.id);
+
+            if (!movingObstacles.ContainsKey(m.id))
+            {
+                GameObject go = Instantiate(movingObstaclePrefab);
+                movingObstacles[m.id] = go;
+            }
+
+            GameObject obs = movingObstacles[m.id];
+            obs.transform.position = new Vector3(m.x, m.y, m.z);
+        }
+    }
     #endregion
 
     // -------------------------------------------------------------------------
@@ -498,6 +519,13 @@ public class NetworkManager : MonoBehaviour
         public float rotationY;
     }
 
+    [Serializable]
+    public class MovingObstacleData
+    {
+        public int id;
+        public float x, y, z;
+    }
+
     [Serializable] public class Position { public float x, y, z; }
 
     [Serializable]
@@ -505,6 +533,7 @@ public class NetworkManager : MonoBehaviour
     {
         public Dictionary<string, PlayerData> players;
         public List<BulletData> bullets;
+        public List<MovingObstacleData> movingObstacles;
     }
 
     [Serializable]
