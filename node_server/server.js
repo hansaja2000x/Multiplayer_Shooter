@@ -22,6 +22,35 @@ const MAX_PLAYERS   = 2;
 let   globalBulletId = 0;
 const disconnectTimeouts = {};
 
+// obstacle array
+const movingObstacleSets = [
+  [
+    { id: 0, x: 0.13,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5 },
+    { id: 1, x: 7.94,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7  },
+    { id: 2, x: -1.0753,y: 1.1437,  z: 10.0101, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
+    { id: 3, x: 5.0897, y: 1.1437,  z: 14.7271, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
+    { id: 4, x: 2.1335, y: 1.1437, z: 22.028,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
+    { id: 5, x: -4.68,  y: 1.1437, z: 16.2,    size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 }
+  ],
+  [
+    { id: 0, x: -7.58,  y: 1.1437, z: 21.39,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5 },
+    { id: 1, x: -1.59,  y: 1.1437, z: 15.18,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7  },
+    { id: 2, x: 3.9,  y: 1.1437, z: 10.23,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 5  },
+    { id: 3, x: -4.09,y: 1.1437,  z: 9.25, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
+    { id: 4, x: 4.89, y: 1.1437,  z: 19.24, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
+    { id: 5, x: -9.26, y: 1.1437, z: 9.99,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 }
+  ],
+  [
+    { id: 0, x: -9.7,  y: 1.1437, z: 16.71,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5 },
+    { id: 1, x: -141,  y: 1.1437, z: 16.72,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7  },
+    { id: 2, x: 7.8,  y: 1.1437, z: 16.69,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 5  },
+    { id: 3, x: -5.76,y: 1.1437,  z: 13.22, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
+    { id: 4, x: 2.85, y: 1.1437,  z: 13.44, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
+    { id: 5, x: -5.58, y: 1.1437, z: 20.78,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
+    { id: 6, x: 3.27, y: 1.1437, z: 20.78,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 }
+  ]
+]
+
 // -------- simulated object handlers --------
 function degToRad(d) { return d * (Math.PI / 180); }
 function getOBBAxes(rotY) {
@@ -113,6 +142,9 @@ app.post("/api/createRoom", (req, res) => {
       return res.status(400).json({ status: false, message: "Game session already exists" });
     }
 
+    // Pick a random moving obstacle set
+    const randomSet = movingObstacleSets[Math.floor(Math.random() * movingObstacleSets.length)];
+    
     // Setup room
     rooms[roomCode] = {
       players: {},
@@ -123,15 +155,8 @@ app.post("/api/createRoom", (req, res) => {
         { x: 11.87,  y: 1.1039, z: 0,       size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0 },
         { x: -0.396, y: 1.1459, z: 32.05,   size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0 },
         { x: -0.396, y: 1.1459, z: -0.488,  size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0 },
-        { x: -1.0753,y: 1.097,  z: 10.0101, size: { x: 1.415, y: 2.326, z: 1.304 }, rotationY: 0 },
-        { x: 5.0897, y: 1.097,  z: 14.7271, size: { x: 1.683, y: 2.326, z: 1.562 }, rotationY: 0 },
-        { x: 2.1335, y: 1.1437, z: 22.028,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0 },
-        { x: -4.68,  y: 1.1437, z: 16.2,    size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0 }
-      ],
-      movingObstacles: [
-        { id: 0, x: 0.13,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5 },
-        { id: 1, x: 7.94,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7  }
-      ],
+      ], // walls
+      movingObstacles: randomSet,
       allowedPlayers: players.map(p => p.uuid),
       isPlaying: false
     };
@@ -359,6 +384,7 @@ setInterval(() => {
 
         // --- Update moving obstacles (Y-axis ping-pong) ---
     for (const mob of room.movingObstacles) {
+      if(mob.speed == 0) continue;
       if (!mob.direction) mob.direction = 1; // 1 = up, -1 = down
 
       mob.y += mob.speed * mob.direction;
