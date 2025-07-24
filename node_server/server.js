@@ -3,6 +3,18 @@ const app     = express();
 const port    = 3000;
 app.use(express.json());
 
+const mongoose = require('mongoose');
+const cors = require('cors');
+const axios = require('axios');
+const dotenv = require('dotenv');
+const path = require('path');
+const Room = require('./schemas/roomSchema');
+require('./config/database');
+
+dotenv.config();
+const PORT = process.env.PORT || 3007;
+const SAFA_BACKEND_URL = process.env.SAFA_BACKEND_URL;
+
 const server  = require("http").Server(app);
 //server.listen(port, () => console.log("Server listening at port " + port));
 server.listen(port, "0.0.0.0", () => console.log("Server listening at http://0.0.0.0:" + port));
@@ -158,7 +170,8 @@ app.post("/api/createRoom", (req, res) => {
       ], // walls
       movingObstacles: randomSet,
       allowedPlayers: players.map(p => p.uuid),
-      isPlaying: false
+      isPlaying: false,
+      winnerDataSent: false
     };
 
     const responseData = {
@@ -325,28 +338,81 @@ io.on("connection", socket => {
 
   // ---------------- disconnect -------------
   socket.on("disconnect", () => {
-    if (!roomCode || !rooms[roomCode]) return;
-    const room = rooms[roomCode];
-    const player = room.players[socket.id];
-    if (!player) return;
+  if (!roomCode || !rooms[roomCode]) return;
+  const room = rooms[roomCode];
+  const player = room.players[socket.id];
+  if (!player) return;
 
-    // Mark player as temporarily disconnected
-    player.disconnected = true;
+  // Mark player as temporarily disconnected
+  player.disconnected = true;
 
-    delete room.latestInputs[socket.id];
-    disconnectTimeouts[socket.id] = setTimeout(() => {
-      if (room.players[socket.id]?.disconnected) {
-        delete room.players[socket.id];       
-        remainingPlayerId = Object.keys(room.players)[0];
-        remainingPlayer = room.players[remainingPlayerId];
+  delete room.latestInputs[socket.id];
+  disconnectTimeouts[socket.id] = setTimeout(() => {
+    if (room.players[socket.id]?.disconnected && !room.winnerDataSent) {
+      // Find the remaining player (the one who didn't disconnect)
+      let remainingPlayerId = null;
+      for (const pid in room.players) {
+        if (pid !== socket.id) {
+          remainingPlayerId = pid;
+          break;
+        }
+      }
+
+      if (remainingPlayerId) {
+        const remainingPlayer = room.players[remainingPlayerId];
+
+        // Prepare winnerData before deleting player
+        const winnerData = {
+          gameSessionUuid: roomCode, // Use roomCode as gameSessionUuid
+          gameStatus: "FINISHED",
+          players: [
+            {
+              uuid: remainingPlayer.uuId,
+              points: 100,
+              userGameSessionStatus: "WON",
+            },
+            {
+              uuid: player.uuId, // Use loser's uuId before deletion
+              points: 0,
+              userGameSessionStatus: "LOST",
+            },
+          ],
+        };
+        room.winnerDataSent = true; // Prevent multiple sends
+
+        // Broadcast playerWon event
         roomBroadcast(roomCode, "playerWon", {
-              winnerId: remainingPlayerId, loserId: socket.id,
-              winnerName: room.players[remainingPlayerId].name, loserName: "null"
+          winnerId: remainingPlayerId,
+          loserId: socket.id,
+          winnerName: remainingPlayer.name,
+          loserName: player.name,
         });
+
+        // Send winnerData to backend
+        console.log("Winner data (disconnect):", winnerData);
+        (async () => {
+          try {
+            const response = await axios.post(
+              `${SAFA_BACKEND_URL}/api/external_game/v1/game_session_finish`,
+              winnerData
+            );
+            console.log("Backend response (disconnect):", response.data);
+            // Remove the finished game session from memory
+          } catch (error) {
+            console.error("Error sending winner data (disconnect):", error.response?.data || error);
+          }
+          // Delete player and room after sending data
+          delete room.players[socket.id];
+          delete rooms[roomCode];
+        })();
+      } else {
+        // If no remaining players, just clean up
+        delete room.players[socket.id];
         delete rooms[roomCode];
       }
-    }, 10000); // 10 seconds
-  });
+    }
+  }, 10000); // 10 seconds
+});
 
 });
 
@@ -358,6 +424,7 @@ setInterval(() => {
     const room = rooms[code];
     if (!room || room.isPlaying == false) continue;
 
+    let winnerDataToSend = null;
     // Player movement
     for (const id in room.players) {
       const p     = room.players[id];
@@ -445,13 +512,45 @@ setInterval(() => {
               winnerId: b.ownerId, loserId: tid,
               winnerName: winner.name, loserName: t.name
             });
-            delete room;
+
+            winnerDataToSend = {
+              gameSessionUuid: code, // Assuming roomCode is the gameSessionUuid
+              gameStatus: "FINISHED",
+              players: Object.values(room.players).map(player => ({
+                uuid: player.uuId, // Use uuId from room.players
+                points: player.uuId === winner.uuId ? 100 : 0,
+                userGameSessionStatus: player.uuId === winner.uuId ? "WON" : "LOST",
+              })),
+            };
+             
+            
+           // delete room;
           }
           return false;
         }
       }
       return b.lifeTime > 0;
     });
+
+    if (winnerDataToSend) {
+      console.log("Winner data:", winnerDataToSend);
+      // Perform async operation outside the filter loop
+      (async () => {
+        try {
+          const response = await axios.post(
+            `${SAFA_BACKEND_URL}/api/external_game/v1/game_session_finish`,
+            winnerDataToSend
+          );
+          console.log("Backend response:", response.data);
+
+          delete rooms[code];
+        } catch (error) {
+          console.error("Error sending winner data:", error.response?.data || error);
+          // Optionally still delete room on error to prevent stuck state
+          delete rooms[code];
+        }
+      })();
+    }
 
     // Broadcast world state
     roomBroadcast(code, "stateUpdate", {
