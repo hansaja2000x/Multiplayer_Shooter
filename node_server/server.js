@@ -1,9 +1,8 @@
 const express = require("express");
-const app     = express();
-const port    = 3000;
+const app = express();
+const port = 3000;
 app.use(express.json());
 
-const mongoose = require('mongoose');
 const cors = require('cors');
 const axios = require('axios');
 const dotenv = require('dotenv');
@@ -12,66 +11,95 @@ const Room = require('./schemas/roomSchema');
 require('./config/database');
 
 dotenv.config();
-const PORT = process.env.PORT || 3007;
 const SAFA_BACKEND_URL = process.env.SAFA_BACKEND_URL;
 
-const server  = require("http").Server(app);
-//server.listen(port, () => console.log("Server listening at port " + port));
-server.listen(port, "0.0.0.0", () => console.log("Server listening at http://0.0.0.0:" + port));
+const server = require("http").Server(app);
+server.listen(port, () => console.log("Server listening at " + port));
 
 const io = require("socket.io")(server, { cors: { origin: "*" } });
 
 // -----------------------------------------------------------------------------
 function parse(json) { try { return JSON.parse(json); } catch { return {}; } }
-function emitJSON(sock, evt, obj)      { sock.emit(evt, JSON.stringify(obj)); }
+function emitJSON(sock, evt, obj) { sock.emit(evt, JSON.stringify(obj)); }
 function roomBroadcast(code, evt, obj) { io.to(code).emit(evt, JSON.stringify(obj)); }
+
+function getCharacterKeyFromUrl(url) {
+  if (!url) return '';
+  try {
+    const fileName = path.basename(url);
+    return path.parse(fileName).name; // Extracts "Ravex_M" from "Ravex_M.png"
+  } catch (error) {
+    console.error("Error parsing avatar URL:", error);
+    return '';
+  }
+}
 // -----------------------------------------------------------------------------
 
-const rooms         = {};
-const playerSize    = { x: 0.9, y: 2, z: 0.9 };
-const TICK_RATE     = 60;
-const MAX_PLAYERS   = 2;
-let   globalBulletId = 0;
+const rooms = {};
+const playerSize = { x: 0.9, y: 2, z: 0.9 };
+const TICK_RATE = 60;
+const MAX_PLAYERS = 2;
+let globalBulletId = 0;
 const disconnectTimeouts = {};
 
 // obstacle array
 const movingObstacleSets = [
   [
-    { id: 0, x: 0.13,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5 },
-    { id: 1, x: 7.94,  y: 1.1437, z: 15.04,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7  },
-    { id: 2, x: -1.0753,y: 1.1437,  z: 10.0101, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
-    { id: 3, x: 5.0897, y: 1.1437,  z: 14.7271, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
-    { id: 4, x: 2.1335, y: 1.1437, z: 22.028,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
-    { id: 5, x: -4.68,  y: 1.1437, z: 16.2,    size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 }
+    { id: 0, x: 0.13, y: 1.1437, z: 15.04, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5, prefabType: 0 },
+    { id: 1, x: 7.94, y: 1.1437, z: 15.04, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7, prefabType: 1 },
+    { id: 2, x: -1.0753, y: 1.1437, z: 10.0101, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+    { id: 3, x: 5.0897, y: 1.1437, z: 14.7271, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 4, x: 2.1335, y: 1.1437, z: 22.028, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+    { id: 5, x: -4.68, y: 1.1437, z: 16.2, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
   ],
   [
-    { id: 0, x: -7.58,  y: 1.1437, z: 21.39,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5 },
-    { id: 1, x: -1.59,  y: 1.1437, z: 15.18,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7  },
-    { id: 2, x: 3.9,  y: 1.1437, z: 10.23,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 5  },
-    { id: 3, x: -4.09,y: 1.1437,  z: 9.25, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
-    { id: 4, x: 4.89, y: 1.1437,  z: 19.24, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
-    { id: 5, x: -9.26, y: 1.1437, z: 9.99,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 }
+    { id: 0, x: -7.58, y: 1.1437, z: 21.39, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5, prefabType: 1 },
+    { id: 1, x: -1.59, y: 1.1437, z: 15.18, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7, prefabType: 1 },
+    { id: 2, x: 3.9, y: 1.1437, z: 10.23, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 5, prefabType: 0 },
+    { id: 3, x: -4.09, y: 1.1437, z: 9.25, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+    { id: 4, x: 4.89, y: 1.1437, z: 19.24, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 5, x: -9.26, y: 1.1437, z: 9.99, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
   ],
   [
-    { id: 0, x: -9.7,  y: 1.1437, z: 16.71,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5 },
-    { id: 1, x: -141,  y: 1.1437, z: 16.72,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7  },
-    { id: 2, x: 7.8,  y: 1.1437, z: 16.69,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 5  },
-    { id: 3, x: -5.76,y: 1.1437,  z: 13.22, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
-    { id: 4, x: 2.85, y: 1.1437,  z: 13.44, size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
-    { id: 5, x: -5.58, y: 1.1437, z: 20.78,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 },
-    { id: 6, x: 3.27, y: 1.1437, z: 20.78,  size: { x: 1.856, y: 2.42,  z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0 }
-  ]
+    { id: 0, x: -9.7, y: 1.1437, z: 16.71, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5, prefabType: 1 },
+    { id: 1, x: -1.41, y: 1.1437, z: 16.72, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7, prefabType: 1 },
+    { id: 2, x: 7.8, y: 1.1437, z: 16.69, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 5, prefabType: 0 },
+    { id: 3, x: -5.76, y: 1.1437, z: 13.22, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+    { id: 4, x: 2.85, y: 1.1437, z: 13.44, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 5, x: -5.58, y: 1.1437, z: 20.78, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+    { id: 6, x: 3.27, y: 1.1437, z: 20.78, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+  ],
+  [
+    { id: 0, x: 6.6066, y: 1.1437, z: 5.1004, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 1, x: -9.5756, y: 1.1437, z: 5.4982, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 2, x: -6.352, y: 1.1437, z: 9.9735, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 3, x: -8.9864, y: 1.1437, z: 20.0617, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 4, x: -3.4993, y: 1.1437, z: 20.2428, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+  ],
+  [
+    { id: 0, x: -5.7557, y: 1.1437, z: 20.1993, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 1, x: 2.815, y: 1.1437, z: 11.4557, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.014, startPoint: 1.1437, endPoint: 4.9, prefabType: 0 },
+    { id: 2, x: -6.9516, y: 1.1437, z: 14.5641, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 3, x: 6.1585, y: 1.1437, z: 8.4176, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
+    { id: 4, x: -9.1371, y: 1.1437, z: 24.4719, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.013, startPoint: 1.1437, endPoint: 4.6, prefabType: 1 },
+  ],
+  [
+    { id: 0, x: 9.9076, y: 1.1437, z: 12.8731, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.012, startPoint: 1.1437, endPoint: 4.8, prefabType: 0 },
+    { id: 1, x: -3.4662, y: 1.1437, z: 8.8358, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+    { id: 2, x: -7.9684, y: 1.1437, z: 18.972, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+    { id: 3, x: 8.4, y: 1.1437, z: 5.0679, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+    { id: 4, x: -1.2403, y: 1.1437, z: 24.5683, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
+  ],
 ]
-
 // -------- simulated object handlers --------
 function degToRad(d) { return d * (Math.PI / 180); }
 function getOBBAxes(rotY) {
   const r = degToRad(rotY);
   const c = Math.cos(r), s = Math.sin(r);
   return [
-    { x:  c, y: 0, z:  s },  // Right
-    { x:  0, y: 1, z:  0 },  // Up
-    { x: -s, y: 0, z:  c }   // Forward
+    { x: c, y: 0, z: s },  // Right
+    { x: 0, y: 1, z: 0 },  // Up
+    { x: -s, y: 0, z: c }   // Forward
   ];
 }
 // Get all 8 corners of a 3D OBB box
@@ -80,9 +108,9 @@ function getCorners(x, y, z, size, rotY) {
   const r = degToRad(rotY);
   const c = Math.cos(r), s = Math.sin(r);
 
-  const right   = { x:  c, y: 0, z:  s };
-  const forward = { x: -s, y: 0, z:  c };
-  const up      = { x:  0, y: 1, z:  0 };
+  const right = { x: c, y: 0, z: s };
+  const forward = { x: -s, y: 0, z: c };
+  const up = { x: 0, y: 1, z: 0 };
 
   const corners = [];
 
@@ -142,37 +170,91 @@ function checkCollision(candidate, room) {
   return false;
 }
 
+function resetRound(room) {
+  const playerIds = Object.keys(room.players);
+  if (playerIds.length !== 2) return;
+
+  const spawnPositions = [
+    { z: 29.33, rotationY: 180 },
+    { z: 2, rotationY: 0 }
+  ];
+
+  const offset = (room.currentRound % 2 === 0) ? 1 : 0;
+
+  for (let i = 0; i < 2; i++) {
+    const p = room.players[playerIds[i]];
+    const spawn = spawnPositions[(i + offset) % 2];
+    p.x = 0;
+    p.y = 1;
+    p.z = spawn.z;
+    p.rotationY = spawn.rotationY;
+    p.forward = 0;
+    p.right = 0;
+    p.health = 100;
+    p.canShoot = true;
+  }
+
+  room.bullets = [];
+
+  for (const mob of room.movingObstacles) {
+    mob.y = mob.startPoint;
+    mob.direction = 1;
+  }
+}
+
 // -----------------------------------------------------------------------------
 
 // API endpoint for room creation (via HTTP POST)
-app.post("/api/createRoom", (req, res) => {
+app.post("/api/createRoom", async (req, res) => {
   try {
     const { room, players } = req.body;
     const roomCode = room.gameSessionUuid;
 
+    // Check if room already exists in memory
     if (rooms[roomCode]) {
+      return res.status(400).json({ status: false, message: "Game session already exists" });
+    }
+
+    // Check if room already exists in DB
+    const existingRoom = await Room.findOne({ gameSessionUuid: roomCode });
+    if (existingRoom) {
       return res.status(400).json({ status: false, message: "Game session already exists" });
     }
 
     // Pick a random moving obstacle set
     const randomSet = movingObstacleSets[Math.floor(Math.random() * movingObstacleSets.length)];
-    
-    // Setup room
+
+    // Setup room in memory
     rooms[roomCode] = {
       players: {},
       latestInputs: {},
       bullets: [],
       obstacles: [
-        { x: -12.54, y: 1.1039, z: 16.4442, size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0 },
-        { x: 11.87,  y: 1.1039, z: 0,       size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0 },
-        { x: -0.396, y: 1.1459, z: 32.05,   size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0 },
-        { x: -0.396, y: 1.1459, z: -0.488,  size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0 },
+        { id: 0, x: -12.54, y: 1.1039, z: 16.4442, size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0, prefabType: 0 },
+        { id: 1, x: 11.87, y: 1.1039, z: 0, size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0, prefabType: 0 },
+        { id: 2, x: -0.396, y: 1.1459, z: 32.05, size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0, prefabType: 0 },
+        { id: 3, x: -0.396, y: 1.1459, z: -0.488, size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0, prefabType: 0 },
       ], // walls
       movingObstacles: randomSet,
       allowedPlayers: players.map(p => p.uuid),
       isPlaying: false,
-      winnerDataSent: false
+      winnerDataSent: false,
+      currentRound: 1,
+      maxRounds: 3,
+      roundWins: players.reduce((acc, p) => { acc[p.uuid] = 0; return acc; }, {})
     };
+
+    // Save to MongoDB
+    const newRoom = new Room({
+      gameSessionUuid: roomCode,
+      players: players.map(p => ({
+        name: p.name,
+        uuid: p.uuid,
+        profileImage: p.profileImage || '',
+        ready: false,
+      }))
+    });
+    await newRoom.save();
 
     const responseData = {
       status: true,
@@ -182,14 +264,18 @@ app.post("/api/createRoom", (req, res) => {
         gameStateId: roomCode,
         name: room.name,
         createDate: new Date(),
-        link1: `http://192.168.1.3:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
-        link2: `http://192.168.1.3:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
+        link1: `http://localhost:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
+        link2: `http://localhost:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
       }
     };
 
     rooms[roomCode].allowedPlayers = players.map(p => p.uuid);
     rooms[roomCode].playerInfo = players.reduce((acc, player) => {
-      acc[player.uuid] = player.name;
+      acc[player.uuid] = {
+        name: player.name,
+        profileImage: player.profileImage || '',
+        characterKey: getCharacterKeyFromUrl(player.profileImage)
+      };
       return acc;
     }, {});
     res.status(200).json(responseData);
@@ -199,17 +285,21 @@ app.post("/api/createRoom", (req, res) => {
   }
 });
 
-
 io.on("connection", socket => {
   let roomCode = null;
 
-
   // ---------------- joinRoom ----------------
-  socket.on("joinRoom", raw => {
+  socket.on("joinRoom", async raw => {
     const { roomCode: code, uuId } = parse(raw);
     const room = rooms[code];
 
     if (!room) return emitJSON(socket, "errorRoom", { msg: "Room not found" });
+
+    const dbRoom = await Room.findOne({ gameSessionUuid: code });
+    if (!dbRoom) return emitJSON(socket, "errorRoom", { msg: "Room not found in database" });
+
+    const dbPlayer = dbRoom.players.find(p => p.uuid === uuId);
+    if (!dbPlayer) return emitJSON(socket, "errorRoom", { msg: "Player not allowed in this room" });
 
     if (!room.allowedPlayers.includes(uuId))
       return emitJSON(socket, "errorRoom", { msg: "Player not allowed in this room" });
@@ -219,105 +309,118 @@ io.on("connection", socket => {
       id => room.players[id].uuId === uuId && room.players[id].disconnected
     );
 
-    if(existingPlayerId){ 
+    if (existingPlayerId) {
       roomCode = code;
       socket.join(roomCode);
       const p = {
         id: socket.id,
-        x:  room.players[existingPlayerId].x,
-        y:  room.players[existingPlayerId].y,
-        z:  room.players[existingPlayerId].z,
-        rotationY:  room.players[existingPlayerId].rotationY,
+        x: room.players[existingPlayerId].x,
+        y: room.players[existingPlayerId].y,
+        z: room.players[existingPlayerId].z,
+        rotationY: room.players[existingPlayerId].rotationY,
         forward: 0,
         right: 0,
-        health:  room.players[existingPlayerId].health,
+        health: room.players[existingPlayerId].health,
         canShoot: true,
         uuId: uuId,
-        name: room.playerInfo[uuId],
+        name: dbPlayer.name,
+        profileImage: dbPlayer.profileImage,
+        characterKey: room.playerInfo[uuId].characterKey,
         disconnected: false
       };
       room.players[socket.id] = p;
-    // Wait until 2 players have joined before starting game
+      // Wait until 2 players have joined before starting game
       if (Object.keys(room.players).length >= MAX_PLAYERS) {
         // Send to both players
         for (const playerId in room.players) {
           const s = io.sockets.sockets.get(playerId);
           if (s) {
-            emitJSON(s, "yourId", { id: s.id, name: room.players[s.id].name });
-            emitJSON(s, "init", { players: room.players });
+            emitJSON(s, "yourId", {
+              id: s.id,
+              name: room.players[s.id].name,
+              profileImage: room.players[s.id].profileImage,
+              characterKey: room.players[s.id].characterKey
+            });
+            emitJSON(s, "init", { players: room.players, obstacles: room.obstacles, movingObstacles: room.movingObstacles });
             emitJSON(s, "roomJoined", { roomCode });
+            emitJSON(s, "roundStart", { currentRound: room.currentRound });
           }
         }
 
-        roomBroadcast(roomCode, "newPlayerConnected", { players: room.players });
+        roomBroadcast(roomCode, "newPlayerConnected", { players: room.players, obstacles: room.obstacles, movingObstacles: room.movingObstacles });
         room.isPlaying = true;
       }
       delete room.players[existingPlayerId];
-        
+
       roomBroadcast(roomCode, "playerDisconnected", { playerId: existingPlayerId });
 
       if (Object.keys(room.players).length === 0) {
         delete rooms[roomCode];
       }
     }
-    else if (Object.keys(room.players).length > MAX_PLAYERS){
+    else if (Object.keys(room.players).length > MAX_PLAYERS) {
       return emitJSON(socket, "errorRoom", { msg: "Room is full" });
-    }else{
+    } else {
       roomCode = code;
       socket.join(roomCode);
 
       // Determine spawn position based on current number of players
       const numPlayers = Object.keys(room.players).length;
       const spawnZ = numPlayers === 0 ? 29.33 : 2;
+      const spawnRotateY = numPlayers === 0 ? 180 : 0;
 
       const p = {
         id: socket.id,
         x: 0,
         y: 1,
         z: spawnZ,
-        rotationY: 178.27,
+        rotationY: spawnRotateY,
         forward: 0,
         right: 0,
         health: 100,
         canShoot: true,
         uuId: uuId,
-        name: room.playerInfo[uuId],
+        name: dbPlayer.name,
+        profileImage: dbPlayer.profileImage,
+        characterKey: room.playerInfo[uuId].characterKey,
         disconnected: false
       };
 
       room.players[socket.id] = p;
-    // Wait until 2 players have joined before starting game
-    if (Object.keys(room.players).length >= MAX_PLAYERS) {
-      // Send to both players
-      for (const playerId in room.players) {
-        const s = io.sockets.sockets.get(playerId);
-        if (s) {
-          emitJSON(s, "yourId", { id: s.id, name: room.players[s.id].name });
-          emitJSON(s, "init", { players: room.players });
-          emitJSON(s, "roomJoined", { roomCode });
+      // Wait until 2 players have joined before starting game
+      if (Object.keys(room.players).length >= MAX_PLAYERS) {
+        // Send to both players
+        for (const playerId in room.players) {
+          const s = io.sockets.sockets.get(playerId);
+          if (s) {
+            emitJSON(s, "yourId", {
+              id: s.id,
+              name: room.players[s.id].name,
+              profileImage: room.players[s.id].profileImage,
+              characterKey: room.players[s.id].characterKey
+            });
+            emitJSON(s, "init", { players: room.players, obstacles: room.obstacles, movingObstacles: room.movingObstacles });
+            emitJSON(s, "roomJoined", { roomCode });
+            emitJSON(s, "roundStart", { currentRound: room.currentRound });
+          }
         }
+
+        roomBroadcast(roomCode, "newPlayerConnected", { players: room.players, obstacles: room.obstacles, movingObstacles: room.movingObstacles });
+        room.isPlaying = true;
       }
-
-      roomBroadcast(roomCode, "newPlayerConnected", { players: room.players });
-      room.isPlaying = true;
     }
-   }
-
-    
-});
-
+  });
 
   // ---------------- move ----------------
   socket.on("move", raw => {
     const { input } = parse(raw);
     if (roomCode && rooms[roomCode]?.players[socket.id])
       rooms[roomCode].latestInputs[socket.id] = input;
-    
   });
 
   // ---------------- shoot --------------------
   socket.on("shoot", () => {
-    const room   = rooms[roomCode];
+    const room = rooms[roomCode];
     const player = room?.players[socket.id];
     if (!player || !player.canShoot) return;
 
@@ -325,95 +428,94 @@ io.on("connection", socket => {
     setTimeout(() => player.canShoot = true, 500);
 
     const rad = degToRad(player.rotationY);
-    const bx  = player.x + Math.sin(rad);
-    const bz  = player.z + Math.cos(rad);
+    const bx = player.x + Math.sin(rad);
+    const bz = player.z + Math.cos(rad);
 
     room.bullets.push({
       id: globalBulletId++, ownerId: socket.id,
       x: bx, y: player.y + 0.535, z: bz,
       rotationY: player.rotationY, lifeTime: 2.0
     });
-        socket.emit("mirror", JSON.stringify({ event: "shoot", bulletId: globalBulletId }));
+    socket.emit("mirror", JSON.stringify({ event: "shoot", bulletId: globalBulletId }));
   });
 
   // ---------------- disconnect -------------
   socket.on("disconnect", () => {
-  if (!roomCode || !rooms[roomCode]) return;
-  const room = rooms[roomCode];
-  const player = room.players[socket.id];
-  if (!player) return;
+    if (!roomCode || !rooms[roomCode]) return;
+    const room = rooms[roomCode];
+    const player = room.players[socket.id];
+    if (!player) return;
 
-  // Mark player as temporarily disconnected
-  player.disconnected = true;
+    // Mark player as temporarily disconnected
+    player.disconnected = true;
 
-  delete room.latestInputs[socket.id];
-  disconnectTimeouts[socket.id] = setTimeout(() => {
-    if (room.players[socket.id]?.disconnected && !room.winnerDataSent) {
-      // Find the remaining player (the one who didn't disconnect)
-      let remainingPlayerId = null;
-      for (const pid in room.players) {
-        if (pid !== socket.id) {
-          remainingPlayerId = pid;
-          break;
-        }
-      }
-
-      if (remainingPlayerId) {
-        const remainingPlayer = room.players[remainingPlayerId];
-
-        // Prepare winnerData before deleting player
-        const winnerData = {
-          gameSessionUuid: roomCode, // Use roomCode as gameSessionUuid
-          gameStatus: "FINISHED",
-          players: [
-            {
-              uuid: remainingPlayer.uuId,
-              points: 100,
-              userGameSessionStatus: "WON",
-            },
-            {
-              uuid: player.uuId, // Use loser's uuId before deletion
-              points: 0,
-              userGameSessionStatus: "LOST",
-            },
-          ],
-        };
-        room.winnerDataSent = true; // Prevent multiple sends
-
-        // Broadcast playerWon event
-        roomBroadcast(roomCode, "playerWon", {
-          winnerId: remainingPlayerId,
-          loserId: socket.id,
-          winnerName: remainingPlayer.name,
-          loserName: player.name,
-        });
-
-        // Send winnerData to backend
-        console.log("Winner data (disconnect):", winnerData);
-        (async () => {
-          try {
-            const response = await axios.post(
-              `${SAFA_BACKEND_URL}/api/external_game/v1/game_session_finish`,
-              winnerData
-            );
-            console.log("Backend response (disconnect):", response.data);
-            // Remove the finished game session from memory
-          } catch (error) {
-            console.error("Error sending winner data (disconnect):", error.response?.data || error);
+    delete room.latestInputs[socket.id];
+    disconnectTimeouts[socket.id] = setTimeout(() => {
+      if (room.players[socket.id]?.disconnected && !room.winnerDataSent) {
+        // Find the remaining player (the one who didn't disconnect)
+        let remainingPlayerId = null;
+        for (const pid in room.players) {
+          if (pid !== socket.id) {
+            remainingPlayerId = pid;
+            break;
           }
-          // Delete player and room after sending data
+        }
+
+        if (remainingPlayerId) {
+          const remainingPlayer = room.players[remainingPlayerId];
+
+          // Prepare winnerData before deleting player
+          const winnerData = {
+            gameSessionUuid: roomCode,
+            gameStatus: "FINISHED",
+            players: [
+              {
+                uuid: remainingPlayer.uuId,
+                points: 100,
+                userGameSessionStatus: "WON",
+              },
+              {
+                uuid: player.uuId,
+                points: 0,
+                userGameSessionStatus: "DEFEATED",
+              },
+            ],
+          };
+          room.winnerDataSent = true;
+
+          // Broadcast playerDropped instead of playerWon for disconnect case
+          roomBroadcast(roomCode, "playerDropped", { playerId: socket.id });
+          roomBroadcast(roomCode, "gameWon", { winnerName: remainingPlayer.name });
+
+          // Send gameOver event to trigger client-side postMessage
+          roomBroadcast(roomCode, "gameOver", {});
+
+          // Send winnerData to backend
+          console.log("Winner data (disconnect):", winnerData);
+          (async () => {
+            try {
+              const response = await axios.post(
+                `${SAFA_BACKEND_URL}/api/external_game/v1/game_session_finish`,
+                winnerData
+              );
+              console.log("Backend response (disconnect):", response.data);
+            } catch (error) {
+              console.error("Error sending winner data (disconnect):", error.response?.data || error);
+            }
+            // Delete player and room after sending data
+            delete room.players[socket.id];
+            if (Object.keys(room.players).length === 0) {
+              delete rooms[roomCode];
+            }
+          })();
+        } else {
+          // If no remaining players, just clean up
           delete room.players[socket.id];
           delete rooms[roomCode];
-        })();
-      } else {
-        // If no remaining players, just clean up
-        delete room.players[socket.id];
-        delete rooms[roomCode];
+        }
       }
-    }
-  }, 10000); // 10 seconds
-});
-
+    }, 10000); // 10 seconds
+  });
 });
 
 // -----------------------------------------------------------------------------
@@ -427,19 +529,19 @@ setInterval(() => {
     let winnerDataToSend = null;
     // Player movement
     for (const id in room.players) {
-      const p     = room.players[id];
+      const p = room.players[id];
       const input = room.latestInputs[id];
       if (!input) continue;
 
       const speed = 0.09;
-      const rad   = degToRad(p.rotationY);
+      const rad = degToRad(p.rotationY);
       let dx = 0, dz = 0;
       p.forward = 0; p.right = 0;
 
-      if (input.forward)  { dx += Math.sin(rad) * speed; dz += Math.cos(rad) * speed; p.forward = 1; }
+      if (input.forward) { dx += Math.sin(rad) * speed; dz += Math.cos(rad) * speed; p.forward = 1; }
       if (input.backward) { dx -= Math.sin(rad) * speed; dz -= Math.cos(rad) * speed; p.forward = -1; }
-      if (input.left)     { dx -= Math.cos(rad) * speed; dz += Math.sin(rad) * speed; p.right  = -1; }
-      if (input.right)    { dx += Math.cos(rad) * speed; dz -= Math.sin(rad) * speed; p.right  = 1; }
+      if (input.left) { dx -= Math.cos(rad) * speed; dz += Math.sin(rad) * speed; p.right = -1; }
+      if (input.right) { dx += Math.cos(rad) * speed; dz -= Math.sin(rad) * speed; p.right = 1; }
       if (typeof input.rotationDelta === "number")
         p.rotationY = (p.rotationY + input.rotationDelta + 360) % 360;
 
@@ -449,9 +551,9 @@ setInterval(() => {
       }
     }
 
-        // --- Update moving obstacles (Y-axis ping-pong) ---
+    // --- Update moving obstacles (Y-axis ping-pong) ---
     for (const mob of room.movingObstacles) {
-      if(mob.speed == 0) continue;
+      if (mob.speed == 0) continue;
       if (!mob.direction) mob.direction = 1; // 1 = up, -1 = down
 
       mob.y += mob.speed * mob.direction;
@@ -463,7 +565,6 @@ setInterval(() => {
         mob.direction = 1;
       }
     }
-
 
     // Bullet updates
     room.bullets = room.bullets.filter(b => {
@@ -478,7 +579,7 @@ setInterval(() => {
         const obsOBB = { x: obs.x, y: obs.y, z: obs.z, size: obs.size, rotationY: obs.rotationY || 0 };
         if (checkOBB(bulletOBB, obsOBB)) {
           roomBroadcast(code, "bulletHitObstacle", { bulletPos: { x: b.x, y: b.y, z: b.z } });
-          roomBroadcast(code, "bulletRemove",      { bulletId: b.id });
+          roomBroadcast(code, "bulletRemove", { bulletId: b.id });
           return false;
         }
       }
@@ -488,11 +589,10 @@ setInterval(() => {
         const mobOBB = { x: mob.x, y: mob.y, z: mob.z, size: mob.size, rotationY: mob.rotationY || 0 };
         if (checkOBB(bulletOBB, mobOBB)) {
           roomBroadcast(code, "bulletHitObstacle", { bulletPos: { x: b.x, y: b.y, z: b.z } });
-          roomBroadcast(code, "bulletRemove",      { bulletId: b.id });
+          roomBroadcast(code, "bulletRemove", { bulletId: b.id });
           return false;
         }
       }
-
 
       // Player hit
       for (const tid in room.players) {
@@ -503,28 +603,46 @@ setInterval(() => {
         const playerOBB = { x: t.x, y: t.y, z: t.z, size: playerSize, rotationY: t.rotationY };
         if (checkOBB(bulletOBB, playerOBB)) {
           t.health = Math.max(0, t.health - 20);
-          roomBroadcast(code, "playerHit",   { targetId: tid, newHealth: t.health });
+          roomBroadcast(code, "playerHit", { targetId: tid, newHealth: t.health });
           roomBroadcast(code, "bulletHitObstacle", { bulletPos: { x: b.x, y: b.y, z: b.z } });
           roomBroadcast(code, "bulletRemove", { bulletId: b.id });
           if (t.health <= 0) {
             const winner = room.players[b.ownerId];
-            roomBroadcast(code, "playerWon", {
+            const roundWinnerUuId = winner.uuId;
+            const roundLoserUuId = t.uuId;
+            room.roundWins[roundWinnerUuId]++;
+            roomBroadcast(code, "roundOver", {
               winnerId: b.ownerId, loserId: tid,
               winnerName: winner.name, loserName: t.name
             });
 
-            winnerDataToSend = {
-              gameSessionUuid: code, // Assuming roomCode is the gameSessionUuid
-              gameStatus: "FINISHED",
-              players: Object.values(room.players).map(player => ({
-                uuid: player.uuId, // Use uuId from room.players
-                points: player.uuId === winner.uuId ? 100 : 0,
-                userGameSessionStatus: player.uuId === winner.uuId ? "WON" : "LOST",
-              })),
-            };
-             
-            
-           // delete room;
+            const overallWinnerUuId = Object.keys(room.roundWins).find(u => room.roundWins[u] >= 2);
+            if (overallWinnerUuId) {
+              const overallLoserUuId = Object.keys(room.roundWins).find(u => u !== overallWinnerUuId);
+              const overallWinnerName = room.players[Object.keys(room.players).find(id => room.players[id].uuId === overallWinnerUuId)].name;
+              roomBroadcast(code, "gameWon", { winnerName: overallWinnerName });
+              winnerDataToSend = {
+                gameSessionUuid: code,
+                gameStatus: "FINISHED",
+                players: [
+                  {
+                    uuid: overallWinnerUuId,
+                    points: 100,
+                    userGameSessionStatus: "WON",
+                  },
+                  {
+                    uuid: overallLoserUuId,
+                    points: 0,
+                    userGameSessionStatus: "DEFEATED",
+                  },
+                ],
+              };
+              room.winnerDataSent = true;
+            } else {
+              room.currentRound++;
+              resetRound(room);
+              roomBroadcast(code, "roundStart", { currentRound: room.currentRound });
+            }
           }
           return false;
         }
@@ -534,6 +652,8 @@ setInterval(() => {
 
     if (winnerDataToSend) {
       console.log("Winner data:", winnerDataToSend);
+      // Send gameOver event to trigger client-side postMessage
+      roomBroadcast(code, "gameOver", {});
       // Perform async operation outside the filter loop
       (async () => {
         try {
@@ -542,13 +662,14 @@ setInterval(() => {
             winnerDataToSend
           );
           console.log("Backend response:", response.data);
-
-          delete rooms[code];
         } catch (error) {
           console.error("Error sending winner data:", error.response?.data || error);
-          // Optionally still delete room on error to prevent stuck state
-          delete rooms[code];
         }
+        // Disconnect all sockets in the room and delete the room
+        for (const pid in room.players) {
+          io.sockets.sockets.get(pid)?.disconnect();
+        }
+        delete rooms[code];
       })();
     }
 
@@ -560,9 +681,8 @@ setInterval(() => {
         x: b.x, y: b.y, z: b.z, rotationY: b.rotationY
       })),
       movingObstacles: room.movingObstacles.map(m => ({
-        id: m.id, x: m.x, y: m.y, z: m.z
+        id: m.id, x: m.x, y: m.y, z: m.z, size: m.size, rotationY: m.rotationY, prefabType: m.prefabType
       }))
     });
-
   }
 }, 1000 / TICK_RATE);

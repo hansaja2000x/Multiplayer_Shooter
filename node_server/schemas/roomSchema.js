@@ -6,7 +6,6 @@ const playerSchema = new Schema({
   uuid: { type: String, required: true },
   profileImage: { type: String, required: false },
   ready: { type: Boolean, default: false },
-  winState: { type: String, default: 'DEFEATED' },
 });
 
 const roomSchema = new Schema({
@@ -19,3 +18,4 @@ roomSchema.index({ gameSessionUuid: 1 }, { unique: true });
 
 const Room = mongoose.model('Room', roomSchema);
 module.exports = Room;
+

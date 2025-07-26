@@ -4,9 +4,12 @@ using System.Threading.Tasks;
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
-using KyleDulce.SocketIo;   
+using KyleDulce.SocketIo;
 using Newtonsoft.Json;
 using System.Collections;
+using UnityEngine.Networking;
+using System.IO;
+using System.Runtime.InteropServices;
 
 public class NetworkManager : MonoBehaviour
 {
@@ -17,11 +20,13 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private TMP_InputField inputRoomCode;
     [SerializeField] private TMP_Text txtRoomDisplay;
     [SerializeField] private TMP_Text txtErrorMessage;
+    [SerializeField] private TMP_Text roundDisplay;
     [SerializeField] private GameObject menuUI;
     [SerializeField] private GameObject gameplayUI;
     [SerializeField] private GameObject UICamera;
     [SerializeField] private Slider healthSlider;
     [SerializeField] private TextMeshProUGUI playerNameText;
+    [SerializeField] private RawImage playerProfileImage;
     [SerializeField] private GameEndHandler gameEndHandler;
     [SerializeField] private Animator errorAnimator;
     [SerializeField] private Button shootButton;
@@ -32,10 +37,23 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private GameObject playerPrefab;
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private GameObject hitVFXPrefab;
-    [SerializeField] private GameObject movingObstaclePrefab;
+    [SerializeField] private GameObject[] obstaclePrefabs;
+
+    [Header("Character Prefabs")]
+    [SerializeField] private List<CharacterPrefabMapping> characterPrefabMappings;
+
+    [System.Serializable]
+    private class CharacterPrefabMapping
+    {
+        public string characterKey;
+        public GameObject prefab;
+    }
+
+    private Dictionary<string, GameObject> characterPrefabs = new Dictionary<string, GameObject>();
 
     [Header("Game Type")]
     [SerializeField] private bool isOnPC;
+
     // -------- Internal state --------
     private Socket socket;
     private string myPlayerId;
@@ -45,20 +63,27 @@ public class NetworkManager : MonoBehaviour
     private readonly Dictionary<int, GameObject> movingObstacles = new();
     private readonly Queue<Action> mainThreadCalls = new();
 
-    // -------------------------------------------------------------------------
     #region Unity lifecycle
     private void Awake()
     {
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
+
+        foreach (var mapping in characterPrefabMappings)
+        {
+            if (!characterPrefabs.ContainsKey(mapping.characterKey))
+            {
+                characterPrefabs.Add(mapping.characterKey, mapping.prefab);
+            }
+        }
     }
 
     private void Start()
     {
         Debug.Log("About to connect socket...");
-        //socket = SocketIo.establishSocketConnection("ws://localhost:3000");
-        socket = SocketIo.establishSocketConnection("ws://192.168.1.3:3000");
+        socket = SocketIo.establishSocketConnection("ws://localhost:3000");
+        //socket = SocketIo.establishSocketConnection("wss://testb.xcodelab.xyz");
 
         RegisterEvents();
         socket.connect();
@@ -68,15 +93,11 @@ public class NetworkManager : MonoBehaviour
         gameplayUI.SetActive(false);
 
         StartCoroutine(WaitForSocketConnection());
-
-
-
-
     }
 
     private IEnumerator WaitForSocketConnection()
     {
-        while (!socket.connected) 
+        while (!socket.connected)
         {
             yield return null;
         }
@@ -94,34 +115,35 @@ public class NetworkManager : MonoBehaviour
 
     private void OnDestroy() => socket?.disconnect();
     #endregion
-    // -------------------------------------------------------------------------
+
     #region Socket event registration
     private void RegisterEvents()
     {
-        // Lifecycle events
         socket.on("open", _ => Debug.Log("Connected"));
-        socket.on("close", _ => Debug.Log("Disconnected"));
+        socket.on("disconnect", _ => Queue(() => { Debug.Log("Disconnected"); SendGameOver(); }));
         socket.on("error", e => Debug.LogWarning("Socket error: " + e));
         socket.on("reconnect", _ => Debug.Log("Reconnected"));
 
         socket.on("mirror", d => Queue(() => Debug.Log("[MIRROR] " + d)));
 
-        // Game messages
         socket.on("yourId", d => Queue(() => OnYourId(Parse<YourIdResponse>(d))));
         socket.on("roomJoined", d => Queue(() => OnRoomJoined(Parse<RoomJoinedResponse>(d))));
         socket.on("errorRoom", d => Queue(() => OnErrorRoom(Parse<ErrorRoomResponse>(d))));
-        socket.on("init", d => Queue(() => OnInitPlayers(Parse<PlayersWrapper>(d))));
-        socket.on("newPlayerConnected", d => Queue(() => OnNewPlayers(Parse<PlayersWrapper>(d))));
+        socket.on("init", d => Queue(() => OnInit(Parse<InitData>(d))));
+        socket.on("newPlayerConnected", d => Queue(() => OnNewPlayerConnected(Parse<InitData>(d))));
         socket.on("stateUpdate", d => Queue(() => OnStateUpdate(Parse<StateUpdateData>(d))));
         socket.on("bulletRemove", d => Queue(() => OnBulletRemove(Parse<BulletRemoveResponse>(d))));
         socket.on("bulletHitObstacle", d => Queue(() => OnBulletHitObstacle(Parse<BulletHitObstacleResponse>(d))));
         socket.on("playerHit", d => Queue(() => OnPlayerHit(Parse<PlayerHitResponse>(d))));
-        socket.on("playerWon", d => Queue(() => OnPlayerWon(Parse<PlayerWonResponse>(d))));
+        socket.on("roundOver", d => Queue(() => OnRoundOver(Parse<RoundOverResponse>(d))));
+        socket.on("gameWon", d => Queue(() => OnGameWon(Parse<GameWonResponse>(d))));
         socket.on("playerDisconnected", d => Queue(() => OnPlayerDisconnected(Parse<PlayerDisconnectedResponse>(d))));
+        socket.on("playerDropped", d => Queue(() => OnPlayerDropped(Parse<PlayerDisconnectedResponse>(d))));
+        socket.on("gameOver", d => Queue(() => { Debug.Log("Received gameOver"); SendGameOver(); }));
+        socket.on("roundStart", d => Queue(() => OnRoundStart(Parse<RoundStartData>(d))));
     }
     #endregion
 
-    // -------------------------------------------------------------------------
     #region Helpers / Emit
     private void Queue(Action a) { lock (mainThreadCalls) mainThreadCalls.Enqueue(a); }
 
@@ -135,16 +157,37 @@ public class NetworkManager : MonoBehaviour
     }
     #endregion
 
-    // -------------------------------------------------------------------------
     #region Incoming events -> game logic
     private void OnYourId(YourIdResponse d)
     {
         myPlayerId = d.id;
         playerNameText.text = d.name;
+        if (!string.IsNullOrEmpty(d.profileImage))
+        {
+            StartCoroutine(LoadProfileImage(d.profileImage));
+        }
         menuUI.SetActive(false);
         lobbyRobo.SetActive(false);
         gameplayUI.SetActive(true);
         UICamera.SetActive(false);
+    }
+
+    private IEnumerator LoadProfileImage(string url)
+    {
+        using (UnityWebRequest uwr = UnityWebRequestTexture.GetTexture(url))
+        {
+            yield return uwr.SendWebRequest();
+
+            if (uwr.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError("Failed to load profile image: " + uwr.error);
+            }
+            else
+            {
+                Texture2D texture = DownloadHandlerTexture.GetContent(uwr);
+                playerProfileImage.texture = texture;
+            }
+        }
     }
 
     private void OnRoomJoined(RoomJoinedResponse d)
@@ -153,13 +196,24 @@ public class NetworkManager : MonoBehaviour
         txtRoomDisplay.text = "Room: " + currentRoomCode;
     }
 
-    private void OnErrorRoom(ErrorRoomResponse d) {
+    private void OnErrorRoom(ErrorRoomResponse d)
+    {
         txtErrorMessage.text = d.msg;
         errorAnimator.SetTrigger("Start");
     }
 
-    private void OnInitPlayers(PlayersWrapper d) => SpawnPlayer(d.players);
-    private void OnNewPlayers(PlayersWrapper d) => SpawnPlayer(d.players);
+    private void OnInit(InitData d)
+    {
+        SpawnPlayer(d.players);
+        SyncMovingObstacles(d.movingObstacles);
+    }
+
+    private void OnNewPlayerConnected(InitData d)
+    {
+        SpawnPlayer(d.players);
+        SyncMovingObstacles(d.movingObstacles);
+    }
+
     private void OnStateUpdate(StateUpdateData d)
     {
         UpdatePlayers(d.players);
@@ -185,8 +239,9 @@ public class NetworkManager : MonoBehaviour
     private void OnPlayerHit(PlayerHitResponse d)
     {
         if (!players.TryGetValue(d.targetId, out var target)) return;
-        if (d.targetId == myPlayerId) { 
-            healthSlider.value = d.newHealth / 100f; 
+        if (d.targetId == myPlayerId)
+        {
+            healthSlider.value = d.newHealth / 100f;
         }
         else
         {
@@ -194,16 +249,21 @@ public class NetworkManager : MonoBehaviour
         }
     }
 
-    private void OnPlayerWon(PlayerWonResponse d)
+    private void OnRoundOver(RoundOverResponse d)
     {
         if (players.TryGetValue(d.loserId, out var loser))
             loser.GetComponent<PlayerAnimationHandler>().DeathAnimation();
 
         if (players.TryGetValue(myPlayerId, out var me))
             me.GetComponent<PlayerInput>().EndGame();
-        gameEndHandler.GameEnd(d.winnerName);
         players[myPlayerId].GetComponent<PlayerInput>().EndGame();
-        Debug.Log("Game  winner: " + d.winnerName);
+        Debug.Log("Round winner: " + d.winnerName);
+    }
+
+    private void OnGameWon(GameWonResponse d)
+    {
+        gameEndHandler.GameEnd(d.winnerName);
+        Debug.Log("Game winner: " + d.winnerName);
     }
 
     private void OnPlayerDisconnected(PlayerDisconnectedResponse d)
@@ -216,11 +276,34 @@ public class NetworkManager : MonoBehaviour
             players.Remove(d.playerId);
         }
     }
+
+    private void OnPlayerDropped(PlayerDisconnectedResponse d)
+    {
+        if (players.TryGetValue(d.playerId, out var go))
+        {
+            var canvas = go.GetComponent<PlayerCanvasHandler>();
+            players[myPlayerId].GetComponent<CanvasFacingCamera>().RemoveCanvas(canvas.GetCanvasgameObject());
+            go.SetActive(false);
+            players.Remove(d.playerId);
+        }
+        gameEndHandler.PlayerDropped();
+        if (players.TryGetValue(myPlayerId, out var me))
+            me.GetComponent<PlayerInput>().EndGame();
+    }
+
+    private void OnRoundStart(RoundStartData d)
+    {
+        roundDisplay.text = "Round " + d.currentRound;
+        if (players.TryGetValue(myPlayerId, out var me))
+        {
+            var playerInput = me.GetComponent<PlayerInput>();
+            playerInput.BeginRound(); // Assuming PlayerInput has a BeginRound method to re-enable input
+        }
+    }
     #endregion
 
-    // -------------------------------------------------------------------------
     #region Outgoing events
-    public  void CreateRoom()
+    public void CreateRoom()
     {
         if (string.IsNullOrWhiteSpace(inputName.text))
         {
@@ -228,20 +311,11 @@ public class NetworkManager : MonoBehaviour
             errorAnimator.SetTrigger("Start");
             return;
         }
-         Emit("createRoom", new { name = inputName.text });
+        Emit("createRoom", new { name = inputName.text });
     }
 
     public void JoinRoom()
     {
-        /*if (string.IsNullOrWhiteSpace(inputName.text) ||
-            string.IsNullOrWhiteSpace(inputRoomCode.text))
-        {
-            txtErrorMessage.text = "Enter name & room code!";
-            errorAnimator.SetTrigger("Start");
-            return;
-        }
-        Emit("joinRoom", new { roomCode = inputRoomCode.text, name = inputName.text });*/
-
         var urlParams = GetUrlParameters();
 
         if (urlParams.ContainsKey("gameSessionUuid") && urlParams.ContainsKey("uuid"))
@@ -281,11 +355,10 @@ public class NetworkManager : MonoBehaviour
         return result;
     }
 
-    public void JoinRoomWithParams(string roomCode, string playerName)
+    public void JoinRoomWithParams(string roomCode, string playerUuId)
     {
-        Emit("joinRoom", new { roomCode = roomCode, uuId = playerName });
+        Emit("joinRoom", new { roomCode, uuId = playerUuId });
     }
-
 
     public void SendInput(bool f, bool b, bool l, bool r, float rotDelta)
     {
@@ -296,10 +369,9 @@ public class NetworkManager : MonoBehaviour
         socket.emit("move", json);
     }
 
-    public  void SendShoot() => Emit("shoot");
+    public void SendShoot() => Emit("shoot");
     #endregion
 
-    // -------------------------------------------------------------------------
     #region World sync
     private void SpawnPlayer(Dictionary<string, PlayerData> pdata)
     {
@@ -310,7 +382,21 @@ public class NetworkManager : MonoBehaviour
 
             if (!players.ContainsKey(id))
             {
-                GameObject go = Instantiate(playerPrefab);
+                string characterKey = GetCharacterKeyFromUrl(pd.profileImage);
+                GameObject prefab;
+                if (characterPrefabs.TryGetValue(characterKey, out var charPrefab))
+                {
+                    prefab = charPrefab;
+                }
+                else if (characterPrefabMappings.Count > 0)
+                {
+                    prefab = characterPrefabMappings[0].prefab;
+                }
+                else
+                {
+                    prefab = playerPrefab;
+                }
+                GameObject go = Instantiate(prefab);
                 players[id] = go;
 
                 if (id != myPlayerId)
@@ -321,11 +407,11 @@ public class NetworkManager : MonoBehaviour
                     var canvas = go.GetComponent<PlayerCanvasHandler>();
                     canvas.SetHealth(pd.health / 100f);
                     canvas.SetName(pd.name);
+                    canvas.SetProfileImage(pd.profileImage);
                     go.GetComponent<CanvasFacingCamera>().enabled = false;
                 }
                 else
                 {
-                    
                     go.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();
                 }
             }
@@ -340,10 +426,10 @@ public class NetworkManager : MonoBehaviour
                 var canvas = pgo.GetComponent<PlayerCanvasHandler>();
                 canvas.SetHealth(pd.health / 100f);
                 canvas.SetName(pd.name);
+                canvas.SetProfileImage(pd.profileImage);
             }
             else
             {
-                pgo.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();
                 healthSlider.value = pd.health / 100f;
                 PlayerInput playerInput = pgo.GetComponent<PlayerInput>();
                 playerInput.SetShootButton(shootButton);
@@ -354,7 +440,6 @@ public class NetworkManager : MonoBehaviour
             pgo.transform.position = new Vector3(pd.x, pd.y, pd.z);
             pgo.transform.rotation = Quaternion.Euler(0, pd.rotationY, 0);
             pgo.GetComponent<PlayerAnimationHandler>().SetAnimState(pd.forward, pd.right);
-
         }
 
         foreach (KeyValuePair<string, PlayerData> kv in pdata)
@@ -372,6 +457,7 @@ public class NetworkManager : MonoBehaviour
                 players[myPlayerId].GetComponent<CanvasFacingCamera>().AddCanvas(canvas.GetCanvasgameObject());
                 canvas.SetHealth(pd.health / 100f);
                 canvas.SetName(pd.name);
+                canvas.SetProfileImage(pd.profileImage);
             }
             else
             {
@@ -384,6 +470,24 @@ public class NetworkManager : MonoBehaviour
             }
         }
     }
+
+    private string GetCharacterKeyFromUrl(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return string.Empty;
+
+        try
+        {
+            Uri uri = new Uri(url);
+            string fileName = Path.GetFileName(uri.AbsolutePath);
+            return Path.GetFileNameWithoutExtension(fileName);
+        }
+        catch
+        {
+            Debug.LogWarning("Invalid avatar URL: " + url);
+            return string.Empty;
+        }
+    }
+
     private void UpdatePlayers(Dictionary<string, PlayerData> pdata)
     {
         foreach (KeyValuePair<string, PlayerData> kv in pdata)
@@ -393,7 +497,21 @@ public class NetworkManager : MonoBehaviour
 
             if (!players.ContainsKey(id))
             {
-                GameObject go = Instantiate(playerPrefab);
+                string characterKey = GetCharacterKeyFromUrl(pd.profileImage);
+                GameObject prefab;
+                if (characterPrefabs.TryGetValue(characterKey, out var charPrefab))
+                {
+                    prefab = charPrefab;
+                }
+                else if (characterPrefabMappings.Count > 0)
+                {
+                    prefab = characterPrefabMappings[0].prefab;
+                }
+                else
+                {
+                    prefab = playerPrefab;
+                }
+                GameObject go = Instantiate(prefab);
                 players[id] = go;
 
                 if (id != myPlayerId)
@@ -404,6 +522,7 @@ public class NetworkManager : MonoBehaviour
                     var canvas = go.GetComponent<PlayerCanvasHandler>();
                     canvas.SetHealth(pd.health / 100f);
                     canvas.SetName(pd.name);
+                    canvas.SetProfileImage(pd.profileImage);
                     go.GetComponent<CanvasFacingCamera>().enabled = false;
                     players[myPlayerId].GetComponent<CanvasFacingCamera>().AddCanvas(canvas.GetCanvasgameObject());
                 }
@@ -423,6 +542,7 @@ public class NetworkManager : MonoBehaviour
                 var canvas = pgo.GetComponent<PlayerCanvasHandler>();
                 canvas.SetHealth(pd.health / 100f);
                 canvas.SetName(pd.name);
+                canvas.SetProfileImage(pd.profileImage);
             }
             else
             {
@@ -478,26 +598,40 @@ public class NetworkManager : MonoBehaviour
 
             if (!movingObstacles.ContainsKey(m.id))
             {
-                GameObject go = Instantiate(movingObstaclePrefab);
+                int prefabIndex = Mathf.Clamp(m.prefabType, 0, obstaclePrefabs.Length - 1);
+                GameObject go = Instantiate(obstaclePrefabs[prefabIndex]);
+                go.transform.localScale = new Vector3(m.size.x, m.size.y, m.size.z);
+                go.transform.rotation = Quaternion.Euler(0, m.rotationY, 0);
                 movingObstacles[m.id] = go;
             }
 
             GameObject obs = movingObstacles[m.id];
             obs.transform.position = new Vector3(m.x, m.y, m.z);
         }
+
+        List<int> toRemove = new();
+        foreach (int id in movingObstacles.Keys)
+            if (!serverIds.Contains(id)) toRemove.Add(id);
+
+        foreach (int id in toRemove)
+        {
+            Destroy(movingObstacles[id]);
+            movingObstacles.Remove(id);
+        }
     }
     #endregion
 
-    // -------------------------------------------------------------------------
     #region DTOs
-    [Serializable] public class YourIdResponse { public string id; public string name; }
+    [Serializable] public class YourIdResponse { public string id; public string name; public string profileImage; }
     [Serializable] public class RoomJoinedResponse { public string roomCode; }
     [Serializable] public class ErrorRoomResponse { public string msg; }
     [Serializable] public class PlayerDisconnectedResponse { public string playerId; }
     [Serializable] public class PlayerHitResponse { public string targetId; public float newHealth; }
-    [Serializable] public class PlayerWonResponse { public string winnerName; public string loserId; }
+    [Serializable] public class RoundOverResponse { public string winnerName; public string loserId; }
+    [Serializable] public class GameWonResponse { public string winnerName; }
     [Serializable] public class BulletRemoveResponse { public int bulletId; }
     [Serializable] public class BulletHitObstacleResponse { public Position bulletPos; }
+    [Serializable] public class RoundStartData { public int currentRound; }
 
     [Serializable]
     public class PlayerData
@@ -508,6 +642,7 @@ public class NetworkManager : MonoBehaviour
         public float health;
         public string uuId;
         public string name;
+        public string profileImage;
     }
 
     [Serializable]
@@ -520,11 +655,19 @@ public class NetworkManager : MonoBehaviour
     }
 
     [Serializable]
-    public class MovingObstacleData
+    public class ObstacleData
     {
         public int id;
         public float x, y, z;
+        public float rotationY;
+        public Size size;
+        public int prefabType;
     }
+
+    [Serializable]
+    public class MovingObstacleData : ObstacleData { }
+
+    [Serializable] public class Size { public float x, y, z; }
 
     [Serializable] public class Position { public float x, y, z; }
 
@@ -537,9 +680,20 @@ public class NetworkManager : MonoBehaviour
     }
 
     [Serializable]
-    public class PlayersWrapper
+    public class InitData
     {
         public Dictionary<string, PlayerData> players;
+        public List<ObstacleData> obstacles;
+        public List<MovingObstacleData> movingObstacles;
     }
+    #endregion
+
+    #region WebGL specific
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [DllImport("__Internal")]
+    private static extern void SendGameOver();
+#else
+    private static void SendGameOver() { Debug.Log("SendGameOver called (non-WebGL)"); }
+#endif
     #endregion
 }

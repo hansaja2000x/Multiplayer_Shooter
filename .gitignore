@@ -2,7 +2,6 @@
 [Ll]ibrary/
 [Tt]emp/
 [Oo]bj/
-[Bb]uild/
 [Bb]uilds/
 [Ll]ogs/
 [Mm]emoryCaptures/
@@ -60,3 +59,4 @@ mono_crash.*
 # Ignore Unity Cache files
 [Uu]serSettings/
 [Pp]ackages/manifest.json
+node_modules/

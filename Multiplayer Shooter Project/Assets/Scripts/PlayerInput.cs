@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
-using System.Collections.Generic;
 using UnityEngine.UI;
 
 public class PlayerInput : MonoBehaviour
@@ -9,7 +8,6 @@ public class PlayerInput : MonoBehaviour
     [SerializeField] private VariableJoystick variableJoystick;
     [SerializeField] private bool isOnPC;
     private Button shootButton;
-    private float lastMouseX;
     private float lastTouchX;
     private bool isCursorLocked = false;
     private bool isTouching = false;
@@ -19,28 +17,25 @@ public class PlayerInput : MonoBehaviour
 
     void Start()
     {
-        lastMouseX = Input.mousePosition.x;
         LockCursor();
     }
 
     void Update()
     {
         if (!isCursorLocked) return;
-        if(isOnPC == true)
+
+        if (isOnPC)
         {
             PcCalculations();
         }
         else
         {
-            TouchScreenalculations();
+            TouchScreenCalculations();
         }
-
-
     }
 
     private void PcCalculations()
     {
-
         bool f = Input.GetKey(KeyCode.W);
         bool b = Input.GetKey(KeyCode.S);
         bool l = Input.GetKey(KeyCode.A);
@@ -48,7 +43,7 @@ public class PlayerInput : MonoBehaviour
         float rot = Input.GetAxis("Mouse X") * 5f;
 
         // Send only if changed
-        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0000001f)
+        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f)
         {
             NetworkManager.Instance.SendInput(f, b, l, r, rot);
             fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot;
@@ -58,12 +53,10 @@ public class PlayerInput : MonoBehaviour
             NetworkManager.Instance.SendShoot();
     }
 
-    private void TouchScreenalculations()
+    private void TouchScreenCalculations()
     {
-        if(variableJoystick == null)
-        {
-            return;
-        }
+        if (variableJoystick == null) return;
+
         float vertical = variableJoystick.Vertical;
         float horizontal = variableJoystick.Horizontal;
         float rot = 0f;
@@ -73,106 +66,76 @@ public class PlayerInput : MonoBehaviour
         bool l = false;
         bool r = false;
 
-        if (vertical == 0)
-        {
-            vertical = 0.0001f;
-        }
+        // Avoid division by zero
+        if (Mathf.Abs(vertical) < 0.001f) vertical = 0f;
+        if (Mathf.Abs(horizontal) < 0.001f) horizontal = 0f;
 
-        if (horizontal == 0)
-        {
-            horizontal = 0.0001f;
-        }
+        // Calculate absolute values for comparison
+        float absV = Mathf.Abs(vertical);
+        float absH = Mathf.Abs(horizontal);
 
-        if (Mathf.Abs(vertical) - Mathf.Abs(horizontal) > 0f)
+        // Threshold for considering input significant (deadzone)
+        const float inputThreshold = 0.2f;
+        if (absV < inputThreshold && absH < inputThreshold)
         {
-            if (Mathf.Abs(vertical) / Mathf.Abs(horizontal) > 2.093f)
+            // No significant input
+        }
+        else if (absV > absH)
+        {
+            // Vertical dominant
+            const float diagonalThreshold = 2.093f; // approx tan(65°)
+            if (absV / (absH > 0 ? absH : 0.001f) > diagonalThreshold)
             {
-
-                if(variableJoystick.Vertical > 0)
-                {
-                    f = true;
-                    b = false;
-                }
-                else if(variableJoystick.Vertical < 0)
-                {
-                    f = false;
-                    b = true;
-                }
+                // Pure vertical
+                f = vertical > 0;
+                b = vertical < 0;
             }
             else
             {
-                if (variableJoystick.Vertical > 0)
-                {
-                    f = true;
-                    b = false;
-                }
-                else if (variableJoystick.Vertical < 0)
-                {
-                    f = false;
-                    b = true;
-                }
-
-                if (variableJoystick.Horizontal > 0)
-                {
-                    r = true;
-                    l = false;
-                }
-                else if (variableJoystick.Horizontal < 0)
-                {
-                    r = false;
-                    l = true;
-                }
+                // Diagonal
+                f = vertical > 0;
+                b = vertical < 0;
+                l = horizontal < 0;
+                r = horizontal > 0;
             }
         }
-
-        if (Mathf.Abs(horizontal) - Mathf.Abs(vertical) > 0f)
+        else if (absH > absV)
         {
-            if (Mathf.Abs(horizontal) / Mathf.Abs(vertical) > 2.093f)
+            // Horizontal dominant
+            const float diagonalThreshold = 2.093f;
+            if (absH / (absV > 0 ? absV : 0.001f) > diagonalThreshold)
             {
-                if (variableJoystick.Horizontal > 0)
-                {
-                    r = true;
-                    l = false;
-                }
-                else if (variableJoystick.Horizontal < 0)
-                {
-                    r = false;
-                    l = true;
-                }
+                // Pure horizontal
+                l = horizontal < 0;
+                r = horizontal > 0;
             }
             else
             {
-                if (variableJoystick.Vertical > 0)
-                {
-                    f = true;
-                    b = false;
-                }
-                else if (variableJoystick.Vertical < 0)
-                {
-                    f = false;
-                    b = true;
-                }
-
-                if (variableJoystick.Horizontal > 0)
-                {
-                    r = true;
-                    l = false;
-                }
-                else if (variableJoystick.Horizontal < 0)
-                {
-                    r = false;
-                    l = true;
-                }
+                // Diagonal
+                f = vertical > 0;
+                b = vertical < 0;
+                l = horizontal < 0;
+                r = horizontal > 0;
             }
         }
-
-        /*if (Input.touchCount > 0)
+        else
         {
-            Touch touch = Input.GetTouch(0);
+            // Equal (45°), treat as diagonal
+            f = vertical > 0;
+            b = vertical < 0;
+            l = horizontal < 0;
+            r = horizontal > 0;
+        }
 
-            float screenBlockThreshold = Screen.width * 0.3f;
-            if (touch.position.x <= screenBlockThreshold)
-                return;
+        // Handle rotation via touch on right side
+        const float sensitivity = 0.35f;
+        float screenBlockThreshold = Screen.width * 0.3f;
+
+        for (int i = 0; i < Input.touchCount; i++)
+        {
+            Touch touch = Input.GetTouch(i);
+
+            if (touch.position.x <= screenBlockThreshold) continue; // Ignore left side (joystick area)
 
             if (touch.phase == TouchPhase.Began)
             {
@@ -182,65 +145,27 @@ public class PlayerInput : MonoBehaviour
             else if (touch.phase == TouchPhase.Moved && isTouching)
             {
                 float deltaX = touch.position.x - lastTouchX;
-                rot = deltaX * 0.35f; 
+                rot = deltaX * sensitivity * Time.deltaTime * 60f; // Frame-rate independent, assuming 60 FPS target
                 lastTouchX = touch.position.x;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
-                rot = 0.0000001f;
+                rot = 0f;
                 isTouching = false;
             }
-        }*/
 
-        if (Input.touchCount > 0)
-        {
-            float screenBlockThreshold = Screen.width * 0.3f;
-
-            // Find a touch on the right side (above 30% of screen width)
-            for (int i = 0; i < Input.touchCount; i++)
-            {
-                Touch touch = Input.GetTouch(i);
-
-                if (touch.position.x <= screenBlockThreshold)
-                    continue;
-
-                if (touch.phase == TouchPhase.Began)
-                {
-                    lastTouchX = touch.position.x;
-                    isTouching = true;
-                }
-                else if (touch.phase == TouchPhase.Moved && isTouching)
-                {
-                    float deltaX = touch.position.x - lastTouchX;
-                    rot = deltaX * 0.35f;
-                    lastTouchX = touch.position.x;
-                }
-                else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
-                {
-                    rot = 0.0000001f;
-                    isTouching = false;
-                }
-
-                // We found the right-side touch to handle � break to avoid conflicting touches
-                break;
-            }
+            // Process only the first valid right-side touch to avoid conflicts
+            break;
         }
 
-
-        // Send only if changed
-        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) >= 0.0000001f)
+        // Send only if changed (use a small epsilon for float comparison)
+        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f)
         {
             NetworkManager.Instance.SendInput(f, b, l, r, rot);
             fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot;
         }
-
-
-
-
     }
 
-
-    // Setters
     private void OnShootButtonClicked()
     {
         NetworkManager.Instance.SendShoot();
@@ -262,11 +187,10 @@ public class PlayerInput : MonoBehaviour
         this.isOnPC = isOnPC;
     }
 
-    //
-
     public void DeactivateCameraObject()
     {
-        cameraObj.SetActive(false);
+        if (cameraObj != null)
+            cameraObj.SetActive(false);
     }
 
     public void EndGame()
@@ -274,20 +198,29 @@ public class PlayerInput : MonoBehaviour
         UnlockCursor();
     }
 
+    public void BeginRound()
+    {
+        fLast = false;
+        bLast = false;
+        lLast = false;
+        rLast = false;
+        rotLast = 0f;
+        isTouching = false;
+        LockCursor();
+    }
+
     private void LockCursor()
     {
-        /*Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;*/
+        // Cursor.lockState = CursorLockMode.Locked;
+        // Cursor.visible = false;
         isCursorLocked = true;
     }
 
     private void UnlockCursor()
     {
-        /*Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;*/
+        // Cursor.lockState = CursorLockMode.None;
+        // Cursor.visible = true;
         isCursorLocked = false;
-        NetworkManager.Instance.SendInput(false, false, false, false, 0);
+        NetworkManager.Instance.SendInput(false, false, false, false, 0f);
     }
-
-
 }

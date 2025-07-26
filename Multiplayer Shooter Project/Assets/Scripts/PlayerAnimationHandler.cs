@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class PlayerAnimationHandler : MonoBehaviour
@@ -12,35 +10,36 @@ public class PlayerAnimationHandler : MonoBehaviour
     [SerializeField] private AudioSource laserGunAudio;
     [SerializeField] private AudioClip laserGunAudioClip;
 
+    // Set movement animation parameters (expects values between -1 and 1 for smooth blending)
     public void SetAnimState(float forward, float right)
     {
-        playerAnimator.SetFloat("MoveX", right );
-        playerAnimator.SetFloat("MoveZ", forward );
-
+        playerAnimator.SetFloat("MoveX", right);
+        playerAnimator.SetFloat("MoveZ", forward);
     }
 
-    public void DisableShootAnimation()
-    {
-        //playerAnimator.SetBool("isShooting", false);
-    }
-
+    // Trigger shooting animation
     public void EnableShootAnimation()
     {
         playerAnimator.SetTrigger("Shooting");
     }
 
+    // Trigger death animation
     public void DeathAnimation()
     {
         playerAnimator.SetTrigger("Death");
     }
 
+    // Play footstep audio (call from animation events)
     public void PlayFootAudio()
     {
-        footAudio.PlayOneShot(footAudioClip);
+        if (footAudio != null && footAudioClip != null)
+            footAudio.PlayOneShot(footAudioClip);
     }
 
+    // Play shooting audio (call when shooting)
     public void PlayShootAudio()
     {
-        laserGunAudio.PlayOneShot(laserGunAudioClip);
+        if (laserGunAudio != null && laserGunAudioClip != null)
+            laserGunAudio.PlayOneShot(laserGunAudioClip);
     }
 }
