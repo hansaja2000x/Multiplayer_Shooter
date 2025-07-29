@@ -6,7 +6,7 @@
     <title>Unity Web Player | Multiplayer Shooter Project</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
-    <script src="https://cdn.socket.io/4.0.0/socket.io.js"></script> <!-- ✅ Added Socket.IO -->
+    <script src="https://cdn.socket.io/4.0.0/socket.io.js"></script>
   </head>
   <body>
     <div id="unity-container" class="unity-desktop">
@@ -24,13 +24,16 @@
         <div id="unity-build-title">Multiplayer Shooter Project</div>
       </div>
     </div>
-
     <script>
+      var unityInstance; // Added declaration
       var canvas = document.querySelector("#unity-canvas");
 
-      // ✅ Added variable declaration before config
-      var unityInstance;
-
+      // Shows a temporary message banner/ribbon for a few seconds, or
+      // a permanent error message on top of the canvas if type=='error'.
+      // If type=='warning', a yellow highlight color is used.
+      // Modify or remove this function to customize the visually presented
+      // way that non-critical warnings and error messages are presented to the
+      // user.
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
         function updateBannerVisibility() {
@@ -71,7 +74,6 @@
         document.getElementsByTagName('head')[0].appendChild(meta);
         document.querySelector("#unity-container").className = "unity-mobile";
         canvas.className = "unity-mobile";
-        // config.devicePixelRatio = 1;
       } else {
         canvas.style.width = "960px";
         canvas.style.height = "600px";
@@ -84,11 +86,11 @@
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
           document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
-        }).then((instance) => {
-          this.unityInstance = instance; // ✅ Added reference
+        }).then((unityInstance) => {
+          this.unityInstance = unityInstance; // Assign to global variable
           document.querySelector("#unity-loading-bar").style.display = "none";
           document.querySelector("#unity-fullscreen-button").onclick = () => {
-            instance.SetFullscreen(1);
+            unityInstance.SetFullscreen(1);
           };
         }).catch((message) => {
           alert(message);

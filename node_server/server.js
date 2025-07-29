@@ -45,25 +45,25 @@ const disconnectTimeouts = {};
 // obstacle array
 const movingObstacleSets = [
   [
-    { id: 0, x: 0.13, y: 1.1437, z: 15.04, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5, prefabType: 0 },
-    { id: 1, x: 7.94, y: 1.1437, z: 15.04, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7, prefabType: 1 },
+    { id: 0, x: 0.13, y: -1.185, z: 15.04, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: -1.185, endPoint: 1.43, prefabType: 0 },
+    { id: 1, x: 7.94, y: -1.185, z: 15.04, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: -1.185, endPoint: 1.43, prefabType: 1 },
     { id: 2, x: -1.0753, y: 1.1437, z: 10.0101, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
     { id: 3, x: 5.0897, y: 1.1437, z: 14.7271, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
     { id: 4, x: 2.1335, y: 1.1437, z: 22.028, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
     { id: 5, x: -4.68, y: 1.1437, z: 16.2, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
   ],
   [
-    { id: 0, x: -7.58, y: 1.1437, z: 21.39, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5, prefabType: 1 },
-    { id: 1, x: -1.59, y: 1.1437, z: 15.18, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7, prefabType: 1 },
-    { id: 2, x: 3.9, y: 1.1437, z: 10.23, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 5, prefabType: 0 },
+    { id: 0, x: -7.58, y: -1.185, z: 21.39, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: -1.185, endPoint: 1.43, prefabType: 1 },
+    { id: 1, x: -1.59, y: -1.185, z: 15.18, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: -1.185, endPoint: 1.43, prefabType: 1 },
+    { id: 2, x: 3.9, y: -1.185, z: 10.23, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: -1.185, endPoint: 1.43, prefabType: 0 },
     { id: 3, x: -4.09, y: 1.1437, z: 9.25, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
     { id: 4, x: 4.89, y: 1.1437, z: 19.24, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
     { id: 5, x: -9.26, y: 1.1437, z: 9.99, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
   ],
   [
-    { id: 0, x: -9.7, y: 1.1437, z: 16.71, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: 1.1437, endPoint: 4.5, prefabType: 1 },
-    { id: 1, x: -1.41, y: 1.1437, z: 16.72, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 4.7, prefabType: 1 },
-    { id: 2, x: 7.8, y: 1.1437, z: 16.69, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: 1.1437, endPoint: 5, prefabType: 0 },
+    { id: 0, x: -9.7, y: -1.185, z: 16.71, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.01, startPoint: -1.185, endPoint: 1.43, prefabType: 1 },
+    { id: 1, x: -1.41, y: -1.185, z: 16.72, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: -1.185, endPoint: 1.43, prefabType: 1 },
+    { id: 2, x: 7.8, y: -1.185, z: 16.69, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.015, startPoint: -1.185, endPoint: 1.43, prefabType: 0 },
     { id: 3, x: -5.76, y: 1.1437, z: 13.22, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
     { id: 4, x: 2.85, y: 1.1437, z: 13.44, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
     { id: 5, x: -5.58, y: 1.1437, z: 20.78, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
@@ -78,19 +78,20 @@ const movingObstacleSets = [
   ],
   [
     { id: 0, x: -5.7557, y: 1.1437, z: 20.1993, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
-    { id: 1, x: 2.815, y: 1.1437, z: 11.4557, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.014, startPoint: 1.1437, endPoint: 4.9, prefabType: 0 },
+    { id: 1, x: 2.815, y: -1.185, z: 11.4557, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.014, startPoint: -1.185, endPoint: 1.43, prefabType: 0 },
     { id: 2, x: -6.9516, y: 1.1437, z: 14.5641, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
     { id: 3, x: 6.1585, y: 1.1437, z: 8.4176, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 1 },
-    { id: 4, x: -9.1371, y: 1.1437, z: 24.4719, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.013, startPoint: 1.1437, endPoint: 4.6, prefabType: 1 },
+    { id: 4, x: -9.1371, y: -1.185, z: 24.4719, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.013, startPoint: -1.185, endPoint: 1.43, prefabType: 1 },
   ],
   [
-    { id: 0, x: 9.9076, y: 1.1437, z: 12.8731, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.012, startPoint: 1.1437, endPoint: 4.8, prefabType: 0 },
+    { id: 0, x: 9.9076, y: -1.185, z: 12.8731, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0.012, startPoint: -1.185, endPoint: 1.43, prefabType: 0 },
     { id: 1, x: -3.4662, y: 1.1437, z: 8.8358, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
     { id: 2, x: -7.9684, y: 1.1437, z: 18.972, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
     { id: 3, x: 8.4, y: 1.1437, z: 5.0679, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
     { id: 4, x: -1.2403, y: 1.1437, z: 24.5683, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
   ],
 ]
+
 // -------- simulated object handlers --------
 function degToRad(d) { return d * (Math.PI / 180); }
 function getOBBAxes(rotY) {
@@ -155,9 +156,11 @@ function checkOBB(a, b) {
 }
 function checkCollision(candidate, room) {
   const obb = { ...candidate, size: playerSize };
+  let onMovingObstacle = null;
+  let topCollision = false;
 
-  const allObstacles = room.obstacles.concat(room.movingObstacles);
-  for (const obs of allObstacles) {
+  // Check static obstacles (walls)
+  for (const obs of room.obstacles) {
     const obsOBB = {
       x: obs.x,
       y: obs.y,
@@ -165,9 +168,34 @@ function checkCollision(candidate, room) {
       size: obs.size,
       rotationY: obs.rotationY || 0
     };
-    if (checkOBB(obb, obsOBB)) return true;
+    if (checkOBB(obb, obsOBB)) return { collision: true };
   }
-  return false;
+
+  // Check moving obstacles
+  for (const mob of room.movingObstacles) {
+    const mobOBB = {
+      x: mob.x,
+      y: mob.y,
+      z: mob.z,
+      size: mob.size,
+      rotationY: mob.rotationY || 0
+    };
+    if (checkOBB(obb, mobOBB)) {
+      const playerBottom = candidate.y - playerSize.y / 2;
+      const obstacleTop = mob.y + mob.size.y / 2;
+      const yDiff = Math.abs(playerBottom - obstacleTop);
+      if (yDiff < 0.15 && playerBottom >= obstacleTop - 0.15) { 
+        // Chek top
+        onMovingObstacle = mob;
+        topCollision = true;
+      } else {
+        // Col check
+        return { collision: true };
+      }
+    }
+  }
+
+  return { collision: false, onMovingObstacle, topCollision };
 }
 
 function resetRound(room) {
@@ -192,6 +220,9 @@ function resetRound(room) {
     p.right = 0;
     p.health = 100;
     p.canShoot = true;
+    p.isOnObstacle = false; // Reset obstacle state
+    p.currentObstacle = null; // Reset current obstacle
+    p.isFalling = false; // Reset falling state
   }
 
   room.bullets = [];
@@ -326,7 +357,10 @@ io.on("connection", socket => {
         name: dbPlayer.name,
         profileImage: dbPlayer.profileImage,
         characterKey: room.playerInfo[uuId].characterKey,
-        disconnected: false
+        disconnected: false,
+        isOnObstacle: room.players[existingPlayerId].isOnObstacle,
+        currentObstacle: room.players[existingPlayerId].currentObstacle,
+        isFalling: room.players[existingPlayerId].isFalling
       };
       room.players[socket.id] = p;
       // Wait until 2 players have joined before starting game
@@ -383,7 +417,10 @@ io.on("connection", socket => {
         name: dbPlayer.name,
         profileImage: dbPlayer.profileImage,
         characterKey: room.playerInfo[uuId].characterKey,
-        disconnected: false
+        disconnected: false,
+        isOnObstacle: false,
+        currentObstacle: null,
+        isFalling: false
       };
 
       room.players[socket.id] = p;
@@ -527,6 +564,22 @@ setInterval(() => {
     if (!room || room.isPlaying == false) continue;
 
     let winnerDataToSend = null;
+
+    // --- Update moving obstacles (Y-axis ping-pong) ---
+    for (const mob of room.movingObstacles) {
+      if (mob.speed == 0) continue;
+      if (!mob.direction) mob.direction = 1; // 1 = up, -1 = down
+
+      mob.y += mob.speed * mob.direction;
+      if (mob.y > mob.endPoint) {
+        mob.y = mob.endPoint - 0.03;
+        mob.direction = -1;
+      } else if (mob.y < mob.startPoint) {
+        mob.y = mob.startPoint + 0.03;
+        mob.direction = 1;
+      }
+    }
+
     // Player movement
     for (const id in room.players) {
       const p = room.players[id];
@@ -536,7 +589,8 @@ setInterval(() => {
       const speed = 0.09;
       const rad = degToRad(p.rotationY);
       let dx = 0, dz = 0;
-      p.forward = 0; p.right = 0;
+      p.forward = 0;
+      p.right = 0;
 
       if (input.forward) { dx += Math.sin(rad) * speed; dz += Math.cos(rad) * speed; p.forward = 1; }
       if (input.backward) { dx -= Math.sin(rad) * speed; dz -= Math.cos(rad) * speed; p.forward = -1; }
@@ -545,13 +599,64 @@ setInterval(() => {
       if (typeof input.rotationDelta === "number")
         p.rotationY = (p.rotationY + input.rotationDelta + 360) % 360;
 
-      const candidate = { ...p, x: p.x + dx, y: p.y, z: p.z + dz };
-      if (!checkCollision(candidate, room)) {
-        p.x = candidate.x; p.z = candidate.z;
+      let candidate = { ...p, x: p.x + dx, y: p.y, z: p.z + dz };
+
+      // Checking prt
+      const collisionResult = checkCollision(candidate, room);
+
+      if (!collisionResult.collision) {
+        p.x = candidate.x;
+        p.z = candidate.z;
+
+        if (collisionResult.topCollision && collisionResult.onMovingObstacle) {
+          // Oth
+          p.isOnObstacle = true;
+          p.currentObstacle = collisionResult.onMovingObstacle;
+          p.y = collisionResult.onMovingObstacle.y + collisionResult.onMovingObstacle.size.y / 2 + playerSize.y / 2;
+          p.isFalling = false; //falll
+        } else if (p.isOnObstacle && p.currentObstacle) {
+          // Coll
+          const obstacleOBB = {
+            x: p.currentObstacle.x,
+            y: p.currentObstacle.y,
+            z: p.currentObstacle.z,
+            size: p.currentObstacle.size,
+            rotationY: p.currentObstacle.rotationY || 0
+          };
+          const playerOBB = { x: p.x, y: p.y, z: p.z, size: playerSize, rotationY: p.rotationY };
+          if (!checkOBB(playerOBB, obstacleOBB)) {
+
+            p.isOnObstacle = false;
+            p.currentObstacle = null;
+            p.isFalling = true;
+          } else {
+
+            p.y = p.currentObstacle.y + p.currentObstacle.size.y / 2 + playerSize.y / 2;
+            p.isFalling = false; 
+          }
+        } else {
+          if (p.y > 1) {
+            p.isFalling = true;
+          } else {
+            p.y = 1; 
+            p.isFalling = false;
+          }
+        }
+      } else {
+        p.isFalling = p.y > 1; 
+      }
+      ///// GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG Part
+      if (p.isFalling) {
+        const gravity = -7; 
+        p.y = Math.max(1, p.y + gravity / TICK_RATE);
+        if (p.y <= 1) {
+          p.y = 1;
+          p.isFalling = false;
+        }
       }
     }
 
-    // --- Update moving obstacles (Y-axis ping-pong) ---
+    // --- Update moving obstacles (Y-axis ping-pong) 
     for (const mob of room.movingObstacles) {
       if (mob.speed == 0) continue;
       if (!mob.direction) mob.direction = 1; // 1 = up, -1 = down
