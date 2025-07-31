@@ -1504,6 +1504,7 @@ GameObject:
   - component: {fileID: 4004217124520727084}
   - component: {fileID: 8725899945043884061}
   - component: {fileID: 1182767368691872244}
+  - component: {fileID: 3105950339865006847}
   m_Layer: 0
   m_Name: CameraPivot
   m_TagString: Untagged
@@ -1629,6 +1630,26 @@ AudioListener:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3708602818844746254}
   m_Enabled: 1
+--- !u!114 &3105950339865006847
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3708602818844746254}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dea9f3f512cb5ba40bf72693ef44b132, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  target: {fileID: 3025203880471190469}
+  maxDistance: 3
+  minDistance: 1
+  height: 1.5
+  damping: 3
+  collisionLayers:
+    serializedVersion: 2
+    m_Bits: 8
 --- !u!1 &3862425032879635085
 GameObject:
   m_ObjectHideFlags: 0
@@ -2942,6 +2963,11 @@ MonoBehaviour:
   cameraObj: {fileID: 3708602818844746254}
   variableJoystick: {fileID: 0}
   isOnPC: 0
+  joystickDeadzone: 0.2
+  rotationScreenThreshold: 0.3
+  rotationSensitivity: 0.35
+  invertYRotation: 0
+  rotationDeadzone: 0.1
 --- !u!114 &3714435043578619261
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2960,7 +2986,7 @@ MonoBehaviour:
   footAudioClip: {fileID: 8300000, guid: 2ea4b34d7c78e0c428b38737b0f44815, type: 3}
   laserGunAudio: {fileID: 9172253558891174234}
   laserGunAudioClip: {fileID: 8300000, guid: dfe5fb8ccf69d67418b03cbde179b59f, type: 3}
-  verticalAngle: -169.7
+  verticalAngle: 170
 --- !u!82 &526660514936309919
 AudioSource:
   m_ObjectHideFlags: 0

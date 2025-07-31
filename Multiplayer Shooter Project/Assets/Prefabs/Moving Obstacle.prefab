@@ -11,12 +11,12 @@ GameObject:
   - component: {fileID: 5846446787493891346}
   - component: {fileID: 1563765736868049083}
   - component: {fileID: 5662309123066077304}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Moving Obstacle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
-  m_StaticEditorFlags: 2147483647
+  m_StaticEditorFlags: 0
   m_IsActive: 1
 --- !u!4 &5846446787493891346
 Transform:
@@ -98,12 +98,12 @@ GameObject:
   - component: {fileID: 5297119029067747737}
   - component: {fileID: 4542573186991258376}
   - component: {fileID: 2931252981833317595}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: box_with_door
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
-  m_StaticEditorFlags: 2147483647
+  m_StaticEditorFlags: 0
   m_IsActive: 1
 --- !u!4 &5297119029067747737
 Transform:

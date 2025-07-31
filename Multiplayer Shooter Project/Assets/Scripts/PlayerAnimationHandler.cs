@@ -53,6 +53,12 @@ public class PlayerAnimationHandler : MonoBehaviour
         playerAnimator.SetTrigger("Death");
     }
 
+    // Reset from death state
+    public void Revive()
+    {
+        playerAnimator.Rebind();
+    }
+
     // Play footstep audio (call from animation events)
     public void PlayFootAudio()
     {

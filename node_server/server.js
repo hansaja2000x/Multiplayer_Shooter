@@ -90,9 +90,9 @@ const movingObstacleSets = [
     { id: 3, x: 8.4, y: 1.1437, z: 5.0679, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
     { id: 4, x: -1.2403, y: 1.1437, z: 24.5683, size: { x: 1.856, y: 2.42, z: 2.153 }, rotationY: 0, speed: 0, startPoint: 0, endPoint: 0, prefabType: 0 },
   ],
-]
+];
 
-// -------- simulated object handlers --------
+//-------- simulated object handlers --------
 function degToRad(d) { return d * (Math.PI / 180); }
 function getOBBAxes(rotY) {
   const r = degToRad(rotY);
@@ -314,8 +314,8 @@ app.post("/api/createRoom", async (req, res) => {
         gameStateId: roomCode,
         name: room.name,
         createDate: new Date(),
-        link1: `http://192.168.1.3:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
-        link2: `http://192.168.1.3:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
+        link1: `http://192.168.1.12:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
+        link2: `http://192.168.1.12:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
       }
     };
 
@@ -483,11 +483,14 @@ io.on("connection", socket => {
     if (!player || !player.canShoot) return;
 
     player.canShoot = false;
-    setTimeout(() => player.canShoot = true, 500);
+    setTimeout(() => player.canShoot = true, 300);
 
     const rad = degToRad(player.rotationY);
-    const bx = player.x + Math.sin(rad);
-    const bz = player.z + Math.cos(rad);
+    // Offset bullet to the right of the player (positive X direction)
+    const offsetX = Math.cos(rad + Math.PI / 2) * 0.5; // Right vector (90 degrees from forward)
+    const offsetZ = Math.sin(rad + Math.PI / 2) * 0.5; // Right vector
+    const bx = player.x + offsetX;
+    const bz = player.z + offsetZ;
 
     room.bullets.push({
       id: globalBulletId++, ownerId: socket.id,
@@ -535,7 +538,7 @@ io.on("connection", socket => {
               {
                 uuid: player.uuId,
                 points: 0,
-                userGameSessionStatus: "DEFEATED",
+                userGameSessionStatus: "DROPPED",
               },
             ],
           };
@@ -605,7 +608,7 @@ setInterval(() => {
     for (const id in room.players) {
       const p = room.players[id];
       const input = room.latestInputs[id];
-      if (!input) continue;
+      if (!input || p.health <= 0) continue;
 
       const speed = 0.09;
       const rad = degToRad(p.rotationY);
@@ -616,7 +619,7 @@ setInterval(() => {
       if (input.forward) { dx += Math.sin(rad) * speed; dz += Math.cos(rad) * speed; p.forward = 1; }
       if (input.backward) { dx -= Math.sin(rad) * speed; dz -= Math.cos(rad) * speed; p.forward = -1; }
       if (input.left) { dx -= Math.cos(rad) * speed; dz += Math.sin(rad) * speed; p.right = -1; }
-      if (input.right) { dx += Math.cos(rad) * speed; dz += Math.sin(rad) * speed; p.right = 1; }
+      if (input.right) { dx += Math.cos(rad) * speed; dz -= Math.sin(rad) * speed; p.right = 1; }
       if (typeof input.rotationDelta === "number")
         p.rotationY = (p.rotationY + input.rotationDelta + 360) % 360;
 
@@ -663,21 +666,6 @@ setInterval(() => {
       }
     }
 
-    // --- Update moving obstacles (Y-axis ping-pong) 
-    for (const mob of room.movingObstacles) {
-      if (mob.speed == 0) continue;
-      if (!mob.direction) mob.direction = 1; // 1 = up, -1 = down
-
-      mob.y += mob.speed * mob.direction;
-      if (mob.y > mob.endPoint) {
-        mob.y = mob.endPoint - 0.03;
-        mob.direction = -1;
-      } else if (mob.y < mob.startPoint) {
-        mob.y = mob.startPoint + 0.03;
-        mob.direction = 1;
-      }
-    }
-
     // Bullet updates
     room.bullets = room.bullets.filter(b => {
       b.x += Math.sin(degToRad(b.rotationY)) * 0.25;
@@ -715,52 +703,78 @@ setInterval(() => {
         const playerOBB = { x: t.x, y: t.y, z: t.z, size: playerSize, rotationY: t.rotationY };
         if (checkOBB(bulletOBB, playerOBB)) {
           t.health = Math.max(0, t.health - 20);
+          if (t.health <= 0) {
+            t.forward = 0;
+            t.right = 0;
+            delete room.latestInputs[tid];
+          }
           roomBroadcast(code, "playerHit", { targetId: tid, newHealth: t.health });
           roomBroadcast(code, "bulletHitObstacle", { bulletPos: { x: b.x, y: b.y, z: b.z } });
           roomBroadcast(code, "bulletRemove", { bulletId: b.id });
-          if (t.health <= 0) {
-            const winner = room.players[b.ownerId];
-            const roundWinnerUuId = winner.uuId;
-            const roundLoserUuId = t.uuId;
-            room.roundWins[roundWinnerUuId]++;
-            roomBroadcast(code, "roundOver", {
-              winnerId: b.ownerId, loserId: tid,
-              winnerName: winner.name, loserName: t.name
-            });
-
-            const overallWinnerUuId = Object.keys(room.roundWins).find(u => room.roundWins[u] >= 2);
-            if (overallWinnerUuId) {
-              const overallLoserUuId = Object.keys(room.roundWins).find(u => u !== overallWinnerUuId);
-              const overallWinnerName = room.players[Object.keys(room.players).find(id => room.players[id].uuId === overallWinnerUuId)].name;
-              roomBroadcast(code, "gameWon", { winnerName: overallWinnerName });
-              winnerDataToSend = {
-                gameSessionUuid: code,
-                gameStatus: "FINISHED",
-                players: [
-                  {
-                    uuid: overallWinnerUuId,
-                    points: 100,
-                    userGameSessionStatus: "WON",
-                  },
-                  {
-                    uuid: overallLoserUuId,
-                    points: 0,
-                    userGameSessionStatus: "DEFEATED",
-                  },
-                ],
-              };
-              room.winnerDataSent = true;
-            } else {
-              room.currentRound++;
-              resetRound(room);
-              roomBroadcast(code, "roundStart", { currentRound: room.currentRound });
-            }
-          }
           return false;
         }
       }
       return b.lifeTime > 0;
     });
+
+    // Check for round end after bullet updates
+    const playerIds = Object.keys(room.players);
+    let deadPlayerId = null;
+    for (const pid of playerIds) {
+      if (room.players[pid].health <= 0) {
+        deadPlayerId = pid;
+        break;
+      }
+    }
+
+    if (deadPlayerId && !room.roundEnding) {
+      room.roundEnding = true;
+      const loser = room.players[deadPlayerId];
+      const winnerId = playerIds.find(id => id !== deadPlayerId);
+      const winner = room.players[winnerId];
+      const roundWinnerUuId = winner.uuId;
+      const roundLoserUuId = loser.uuId;
+      room.roundWins[roundWinnerUuId]++;
+
+      const overallWinnerUuId = Object.keys(room.roundWins).find(u => room.roundWins[u] >= 2);
+
+      if (overallWinnerUuId) {
+        const overallLoserUuId = Object.keys(room.roundWins).find(u => u !== overallWinnerUuId);
+        const overallWinnerName = winner.name;
+        roomBroadcast(code, "gameWon", { winnerName: overallWinnerName });
+        winnerDataToSend = {
+          gameSessionUuid: code,
+          gameStatus: "FINISHED",
+          players: [
+            {
+              uuid: overallWinnerUuId,
+              points: 100,
+              userGameSessionStatus: "WON",
+            },
+            {
+              uuid: overallLoserUuId,
+              points: 0,
+              userGameSessionStatus: "DEFEATED",
+            },
+          ],
+        };
+        room.winnerDataSent = true;
+        room.isPlaying = false;
+      } else {
+        roomBroadcast(code, "roundOver", {
+          winnerId: winnerId, loserId: deadPlayerId,
+          winnerName: winner.name, loserName: loser.name
+        });
+        room.isPlaying = false;
+        setTimeout(() => {
+          room.currentRound++;
+          resetRound(room);
+          roomBroadcast(code, "roundStart", { currentRound: room.currentRound });
+          room.isPlaying = true;
+          room.roundEnding = false;
+        }, 3000);
+      }
+    }
 
     if (winnerDataToSend) {
       console.log("Winner data:", winnerDataToSend);

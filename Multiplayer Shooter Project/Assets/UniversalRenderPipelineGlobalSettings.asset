@@ -39,7 +39,7 @@ MonoBehaviour:
       - rid: 8736724187697905667
       - rid: 8736724187697905668
       - rid: 8736724187697905669
-      - rid: 8736724187697905670
+      - rid: 5967738617827164231
       - rid: 8736724187697905671
       - rid: 8736724187697905672
       - rid: 8736724187697905673
@@ -61,7 +61,7 @@ MonoBehaviour:
       - rid: 8736724187697905667
       - rid: 8736724187697905668
       - rid: 8736724187697905669
-      - rid: 8736724187697905670
+      - rid: 5967738617827164231
       - rid: 8736724187697905672
       - rid: 8736724187697905673
       - rid: 8736724187697905677
@@ -90,6 +90,11 @@ MonoBehaviour:
   references:
     version: 2
     RefIds:
+    - rid: 5967738617827164231
+      type: {class: URPDefaultVolumeProfileSettings, ns: UnityEngine.Rendering.Universal, asm: Unity.RenderPipelines.Universal.Runtime}
+      data:
+        m_Version: 0
+        m_VolumeProfile: {fileID: 11400000, guid: f12e640775a2a284899a49fa92db1421, type: 2}
     - rid: 8736724187697905664
       type: {class: UniversalRenderPipelineEditorAssets, ns: UnityEngine.Rendering.Universal, asm: Unity.RenderPipelines.Universal.Runtime}
       data:
@@ -134,11 +139,6 @@ MonoBehaviour:
         m_xrOcclusionMeshPS: {fileID: 4800000, guid: 4431b1f1f743fbf4eb310a967890cbea, type: 3}
         m_xrMirrorViewPS: {fileID: 4800000, guid: d5a307c014552314b9f560906d708772, type: 3}
         m_xrMotionVector: {fileID: 4800000, guid: f89aac1e4f84468418fe30e611dff395, type: 3}
-    - rid: 8736724187697905670
-      type: {class: URPDefaultVolumeProfileSettings, ns: UnityEngine.Rendering.Universal, asm: Unity.RenderPipelines.Universal.Runtime}
-      data:
-        m_Version: 0
-        m_VolumeProfile: {fileID: 11400000, guid: 3e1aa68bf3c2e73429d3f69ef2a8b352, type: 2}
     - rid: 8736724187697905671
       type: {class: UniversalRenderPipelineEditorShaders, ns: UnityEngine.Rendering.Universal, asm: Unity.RenderPipelines.Universal.Runtime}
       data:
@@ -168,7 +168,7 @@ MonoBehaviour:
       type: {class: URPShaderStrippingSetting, ns: UnityEngine.Rendering.Universal, asm: Unity.RenderPipelines.Universal.Runtime}
       data:
         m_Version: 0
-        m_StripUnusedPostProcessingVariants: 0
+        m_StripUnusedPostProcessingVariants: 1
         m_StripUnusedVariants: 1
         m_StripScreenCoordOverrideVariants: 1
     - rid: 8736724187697905675

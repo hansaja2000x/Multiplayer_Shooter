@@ -7,11 +7,19 @@ public class PlayerInput : MonoBehaviour
     [SerializeField] private GameObject cameraObj;
     [SerializeField] private VariableJoystick variableJoystick;
     [SerializeField] private bool isOnPC;
+
+    // New serialized fields for customization
+    [SerializeField, Range(0.1f, 1f)] private float joystickDeadzone = 0.2f;
+    [SerializeField, Range(0f, 1f)] private float rotationScreenThreshold = 0.3f; // Fraction of screen width for left joystick area
+    [SerializeField, Range(0.1f, 2f)] private float rotationSensitivity = 0.35f;
+    [SerializeField] private bool invertYRotation = false; // Option to invert vertical rotation
+    [SerializeField, Range(0.1f, 1f)] private float rotationDeadzone = 0.1f; // Pixel delta threshold for rotation to ignore micro-movements
+
     private Button shootButton;
     private float lastTouchX;
     private float lastTouchY;
     private bool isCursorLocked = false;
-    private bool isTouching = false;
+    private int rotationTouchId = -1; // Track the specific touch ID for rotation to handle multi-touch better
 
     private bool fLast, bLast, lLast, rLast;
     private float rotLast;
@@ -46,7 +54,7 @@ public class PlayerInput : MonoBehaviour
         float rotY = Input.GetAxis("Mouse Y") * 5f;
 
         // Send only if changed
-        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f || Mathf.Abs(rotY - rotLast) > 0.0001f)
+        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f || Mathf.Abs(rotY - rotUpLast) > 0.0001f)
         {
             NetworkManager.Instance.SendInput(f, b, l, r, rot, rotY);
             fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot; rotUpLast = rotY;
@@ -70,101 +78,120 @@ public class PlayerInput : MonoBehaviour
         bool l = false;
         bool r = false;
 
-        // Avoid division by zero
-        if (Mathf.Abs(vertical) < 0.001f) vertical = 0f;
-        if (Mathf.Abs(horizontal) < 0.001f) horizontal = 0f;
+        // Apply deadzone
+        if (Mathf.Abs(vertical) < joystickDeadzone) vertical = 0f;
+        if (Mathf.Abs(horizontal) < joystickDeadzone) horizontal = 0f;
 
         // Calculate absolute values for comparison
         float absV = Mathf.Abs(vertical);
         float absH = Mathf.Abs(horizontal);
 
-        // Threshold for considering input significant (deadzone)
-        const float inputThreshold = 0.2f;
-        if (absV < inputThreshold && absH < inputThreshold)
+        if (absV > 0 || absH > 0)
         {
-            // No significant input
-        }
-        else if (absV > absH)
-        {
-            // Vertical dominant
-            const float diagonalThreshold = 2.093f; // approx tan(65°)
-            if (absV / (absH > 0 ? absH : 0.001f) > diagonalThreshold)
+            if (absV > absH)
             {
-                // Pure vertical
-                f = vertical > 0;
-                b = vertical < 0;
+                // Vertical dominant
+                const float diagonalThreshold = 2.093f; // approx tan(65°)
+                if (absH == 0 || absV / absH > diagonalThreshold)
+                {
+                    // Pure vertical
+                    f = vertical > 0;
+                    b = vertical < 0;
+                }
+                else
+                {
+                    // Diagonal
+                    f = vertical > 0;
+                    b = vertical < 0;
+                    l = horizontal < 0;
+                    r = horizontal > 0;
+                }
+            }
+            else if (absH > absV)
+            {
+                // Horizontal dominant
+                const float diagonalThreshold = 2.093f;
+                if (absV == 0 || absH / absV > diagonalThreshold)
+                {
+                    // Pure horizontal
+                    l = horizontal < 0;
+                    r = horizontal > 0;
+                }
+                else
+                {
+                    // Diagonal
+                    f = vertical > 0;
+                    b = vertical < 0;
+                    l = horizontal < 0;
+                    r = horizontal > 0;
+                }
             }
             else
             {
-                // Diagonal
+                // Equal (45°), treat as diagonal
                 f = vertical > 0;
                 b = vertical < 0;
                 l = horizontal < 0;
                 r = horizontal > 0;
             }
-        }
-        else if (absH > absV)
-        {
-            // Horizontal dominant
-            const float diagonalThreshold = 2.093f;
-            if (absH / (absV > 0 ? absV : 0.001f) > diagonalThreshold)
-            {
-                // Pure horizontal
-                l = horizontal < 0;
-                r = horizontal > 0;
-            }
-            else
-            {
-                // Diagonal
-                f = vertical > 0;
-                b = vertical < 0;
-                l = horizontal < 0;
-                r = horizontal > 0;
-            }
-        }
-        else
-        {
-            // Equal (45°), treat as diagonal
-            f = vertical > 0;
-            b = vertical < 0;
-            l = horizontal < 0;
-            r = horizontal > 0;
         }
 
-        // Handle rotation via touch on right side
-        const float sensitivity = 0.35f;
-        float screenBlockThreshold = Screen.width * 0.3f;
+        // Handle rotation via touch on right side with multi-touch support
+        float screenBlockThreshold = Screen.width * rotationScreenThreshold;
+        bool foundRotationTouch = false;
 
         for (int i = 0; i < Input.touchCount; i++)
         {
             Touch touch = Input.GetTouch(i);
 
-            if (touch.position.x <= screenBlockThreshold) continue; // Ignore left side (joystick area)
+            // Skip if not in rotation area
+            if (touch.position.x <= screenBlockThreshold) continue;
+
+            // If we have an active rotation touch, check if it's this one
+            if (rotationTouchId != -1 && touch.fingerId != rotationTouchId) continue;
+
+            foundRotationTouch = true;
 
             if (touch.phase == TouchPhase.Began)
             {
                 lastTouchX = touch.position.x;
                 lastTouchY = touch.position.y;
-                isTouching = true;
+                rotationTouchId = touch.fingerId;
             }
-            else if (touch.phase == TouchPhase.Moved && isTouching)
+            else if (touch.phase == TouchPhase.Moved)
             {
                 float deltaX = touch.position.x - lastTouchX;
                 float deltaY = touch.position.y - lastTouchY;
-                rot = deltaX * sensitivity * Time.deltaTime * 60f; // Frame-rate independent, assuming 60 FPS target
-                rotY = deltaY * sensitivity * Time.deltaTime * 60f;
+
+                // Apply deadzone to deltas
+                if (Mathf.Abs(deltaX) < rotationDeadzone) deltaX = 0f;
+                if (Mathf.Abs(deltaY) < rotationDeadzone) deltaY = 0f;
+
+                rot = deltaX * rotationSensitivity;
+                rotY = deltaY * rotationSensitivity;
+
+                // Invert Y if enabled
+                if (invertYRotation) rotY = -rotY;
 
                 lastTouchX = touch.position.x;
+                lastTouchY = touch.position.y;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
                 rot = 0f;
                 rotY = 0f;
-                isTouching = false;
+                rotationTouchId = -1;
             }
 
-            // Process only the first valid right-side touch to avoid conflicts
+            // Since we're tracking by ID, we can break after processing the relevant touch
             break;
+        }
+
+        if (!foundRotationTouch)
+        {
+            rot = 0f;
+            rotY = 0f;
+            rotationTouchId = -1;
         }
 
         // Send only if changed (use a small epsilon for float comparison)
@@ -214,7 +241,8 @@ public class PlayerInput : MonoBehaviour
         lLast = false;
         rLast = false;
         rotLast = 0f;
-        isTouching = false;
+        rotUpLast = 0f;
+        rotationTouchId = -1;
         LockCursor();
     }
 

@@ -13,6 +13,7 @@ public class GameEndHandler : MonoBehaviour
 
     [SerializeField] private UnityEvent endGameEvents;
     [SerializeField] private UnityEvent roundEndEvents;
+    [SerializeField] private UnityEvent roundRevertEvents;
 
     public void GameEnd(string winnerName)
     {
@@ -31,6 +32,7 @@ public class GameEndHandler : MonoBehaviour
     {
         yield return new WaitForSeconds(delay);
         fullEndMessage.text = "";
+        roundRevertEvents.Invoke();
     }
 
     public void PlayerDropped()

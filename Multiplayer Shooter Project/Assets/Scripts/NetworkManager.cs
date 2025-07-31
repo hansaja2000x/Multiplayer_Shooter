@@ -82,8 +82,8 @@ public class NetworkManager : MonoBehaviour
     private void Start()
     {
         Debug.Log("About to connect socket...");
-        socket = SocketIo.establishSocketConnection("ws://192.168.1.3:3000");
-        //socket = SocketIo.establishSocketConnection("wss://testb.xcodelab.xyz");
+        socket = SocketIo.establishSocketConnection("ws://192.168.1.12:3000");
+        //socket = SocketIo.establishSocketConnection("wss://deltabreachb.gameonworld.ai");
 
         RegisterEvents();
         socket.connect();
@@ -242,10 +242,18 @@ public class NetworkManager : MonoBehaviour
         if (d.targetId == myPlayerId)
         {
             healthSlider.value = d.newHealth / 100f;
+            if (d.newHealth <= 0)
+            {
+                target.GetComponent<PlayerAnimationHandler>().DeathAnimation();
+            }
         }
         else
         {
             players[d.targetId].GetComponent<PlayerCanvasHandler>().SetHealth(d.newHealth / 100f);
+            if (d.newHealth <= 0)
+            {
+                target.GetComponent<PlayerAnimationHandler>().DeathAnimation();
+            }
         }
     }
 
@@ -255,8 +263,10 @@ public class NetworkManager : MonoBehaviour
             loser.GetComponent<PlayerAnimationHandler>().DeathAnimation();
 
         if (players.TryGetValue(myPlayerId, out var me))
-            me.GetComponent<PlayerInput>().EndGame();
-        players[myPlayerId].GetComponent<PlayerInput>().EndGame();
+            me.GetComponent<PlayerInput>().EndGame(); // disable input during the 3s pause
+
+        // NEW: show "won the round." text and auto-hide after 3s
+        gameEndHandler.RoundEnd(d.winnerName);
         Debug.Log("Round winner: " + d.winnerName);
     }
 
@@ -294,6 +304,10 @@ public class NetworkManager : MonoBehaviour
     private void OnRoundStart(RoundStartData d)
     {
         roundDisplay.text = "Round " + d.currentRound;
+        foreach (var playerKV in players)
+        {
+            playerKV.Value.GetComponent<PlayerAnimationHandler>().Revive();
+        }
         if (players.TryGetValue(myPlayerId, out var me))
         {
             var playerInput = me.GetComponent<PlayerInput>();
