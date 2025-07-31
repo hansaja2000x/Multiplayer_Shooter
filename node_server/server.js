@@ -158,6 +158,7 @@ function checkCollision(candidate, room) {
   const obb = { ...candidate, size: playerSize };
   let onMovingObstacle = null;
   let topCollision = false;
+  let withinObstacleArea = null; // Track if player is within x-z area of an obstacle
 
   // Check static obstacles (walls)
   for (const obs of room.obstacles) {
@@ -171,7 +172,24 @@ function checkCollision(candidate, room) {
     if (checkOBB(obb, obsOBB)) return { collision: true };
   }
 
-  // Check moving obstacles
+  // Check moving obstacles for x-z area overlap (no collision required)
+  for (const mob of room.movingObstacles) {
+    // Define the x-z bounds of the obstacle
+    const halfSizeX = mob.size.x / 2;
+    const halfSizeZ = mob.size.z / 2;
+    const minX = mob.x - halfSizeX;
+    const maxX = mob.x + halfSizeX;
+    const minZ = mob.z - halfSizeZ;
+    const maxZ = mob.z + halfSizeZ;
+
+    // Check if player's x-z position is within the obstacle's x-z area
+    if (candidate.x >= minX && candidate.x <= maxX && candidate.z >= minZ && candidate.z <= maxZ) {
+      withinObstacleArea = mob; // Player is within this obstacle's x-z area
+      break; // Only assign one obstacle (first match)
+    }
+  }
+
+  // Check moving obstacles for collision (for top detection and other collisions)
   for (const mob of room.movingObstacles) {
     const mobOBB = {
       x: mob.x,
@@ -184,18 +202,18 @@ function checkCollision(candidate, room) {
       const playerBottom = candidate.y - playerSize.y / 2;
       const obstacleTop = mob.y + mob.size.y / 2;
       const yDiff = Math.abs(playerBottom - obstacleTop);
-      if (yDiff < 0.15 && playerBottom >= obstacleTop - 0.15) { 
-        // Chek top
+      if (yDiff < 0.15 && playerBottom >= obstacleTop - 0.15) {
+        // Player is on top of the obstacle (collision-based)
         onMovingObstacle = mob;
         topCollision = true;
       } else {
-        // Col check
+        // Collision with obstacle (not on top)
         return { collision: true };
       }
     }
   }
 
-  return { collision: false, onMovingObstacle, topCollision };
+  return { collision: false, onMovingObstacle, topCollision, withinObstacleArea };
 }
 
 function resetRound(room) {
@@ -216,6 +234,7 @@ function resetRound(room) {
     p.y = 1;
     p.z = spawn.z;
     p.rotationY = spawn.rotationY;
+    p.rotationX = -169.2;
     p.forward = 0;
     p.right = 0;
     p.health = 100;
@@ -295,8 +314,8 @@ app.post("/api/createRoom", async (req, res) => {
         gameStateId: roomCode,
         name: room.name,
         createDate: new Date(),
-        link1: `http://192.168.1.8:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
-        link2: `http://192.168.1.8:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
+        link1: `http://192.168.1.3:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
+        link2: `http://192.168.1.3:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
       }
     };
 
@@ -349,6 +368,7 @@ io.on("connection", socket => {
         y: room.players[existingPlayerId].y,
         z: room.players[existingPlayerId].z,
         rotationY: room.players[existingPlayerId].rotationY,
+        rotationX: room.players[existingPlayerId].rotationX,
         forward: 0,
         right: 0,
         health: room.players[existingPlayerId].health,
@@ -409,6 +429,7 @@ io.on("connection", socket => {
         y: 1,
         z: spawnZ,
         rotationY: spawnRotateY,
+        rotationX: -169.2,
         forward: 0,
         right: 0,
         health: 100,
@@ -595,63 +616,45 @@ setInterval(() => {
       if (input.forward) { dx += Math.sin(rad) * speed; dz += Math.cos(rad) * speed; p.forward = 1; }
       if (input.backward) { dx -= Math.sin(rad) * speed; dz -= Math.cos(rad) * speed; p.forward = -1; }
       if (input.left) { dx -= Math.cos(rad) * speed; dz += Math.sin(rad) * speed; p.right = -1; }
-      if (input.right) { dx += Math.cos(rad) * speed; dz -= Math.sin(rad) * speed; p.right = 1; }
+      if (input.right) { dx += Math.cos(rad) * speed; dz += Math.sin(rad) * speed; p.right = 1; }
       if (typeof input.rotationDelta === "number")
         p.rotationY = (p.rotationY + input.rotationDelta + 360) % 360;
 
       if (typeof input.rotationVerticalDelta === "number") {
-        p.rotationX = (p.rotationX || -169.2) - input.rotationVerticalDelta; 
-        p.rotationX = Math.max(-189.7, Math.min(-137, p.rotationX)); 
-    }
+        p.rotationX = (p.rotationX || -169.2) - input.rotationVerticalDelta;
+        p.rotationX = Math.max(-189.7, Math.min(-137, p.rotationX));
+      }
+
       let candidate = { ...p, x: p.x + dx, y: p.y, z: p.z + dz };
 
-      // Checking prt
+      // Check collisions and x-z area overlap
       const collisionResult = checkCollision(candidate, room);
 
       if (!collisionResult.collision) {
         p.x = candidate.x;
         p.z = candidate.z;
 
-        if (collisionResult.topCollision && collisionResult.onMovingObstacle) {
-          // Oth
+        if (collisionResult.withinObstacleArea) {
+          // Player is within the x-z area of a moving obstacle
           p.isOnObstacle = true;
-          p.currentObstacle = collisionResult.onMovingObstacle;
-          p.y = collisionResult.onMovingObstacle.y + collisionResult.onMovingObstacle.size.y / 2 + playerSize.y / 2;
-          p.isFalling = false; //falll
-        } else if (p.isOnObstacle && p.currentObstacle) {
-          // Coll
-          const obstacleOBB = {
-            x: p.currentObstacle.x,
-            y: p.currentObstacle.y,
-            z: p.currentObstacle.z,
-            size: p.currentObstacle.size,
-            rotationY: p.currentObstacle.rotationY || 0
-          };
-          const playerOBB = { x: p.x, y: p.y, z: p.z, size: playerSize, rotationY: p.rotationY };
-          if (!checkOBB(playerOBB, obstacleOBB)) {
-
-            p.isOnObstacle = false;
-            p.currentObstacle = null;
-            p.isFalling = true;
-          } else {
-
-            p.y = p.currentObstacle.y + p.currentObstacle.size.y / 2 + playerSize.y / 2;
-            p.isFalling = false; 
-          }
+          p.currentObstacle = collisionResult.withinObstacleArea;
+          // Set player's y-position to follow the obstacle's y-position
+          p.y = collisionResult.withinObstacleArea.y + collisionResult.withinObstacleArea.size.y / 2 + playerSize.y / 2;
+          p.isFalling = false; // No gravity applied
         } else {
-          if (p.y > 1) {
-            p.isFalling = true;
-          } else {
-            p.y = 1; 
-            p.isFalling = false;
-          }
+          // Player is not within any obstacle's x-z area
+          p.isOnObstacle = false;
+          p.currentObstacle = null;
+          p.isFalling = true; // Apply gravity
         }
       } else {
-        p.isFalling = p.y > 1; 
+        // Collision occurred (e.g., with walls or obstacle sides)
+        p.isFalling = p.y > 1;
       }
-      ///// GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG Part
+
+      // Apply gravity only if the player is falling (not on an obstacle's x-z area)
       if (p.isFalling) {
-        const gravity = -7; 
+        const gravity = -7;
         p.y = Math.max(1, p.y + gravity / TICK_RATE);
         if (p.y <= 1) {
           p.y = 1;

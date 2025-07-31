@@ -11170,6 +11170,71 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 4333212190773438, guid: ee65bc5a8a1b3454581a339cf9236890, type: 3}
   m_PrefabInstance: {fileID: 778790771}
   m_PrefabAsset: {fileID: 0}
+--- !u!1001 &782628375
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3025203880471190469, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7364221891404872987, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_Name
+      value: Player Robot  (Verticle)
+      objectReference: {fileID: 0}
+    - target: {fileID: 7364221891404872987, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7621635957581792054, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 1
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
 --- !u!1001 &782998236
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -37560,3 +37625,4 @@ SceneRoots:
   - {fileID: 1487013854}
   - {fileID: 133629858}
   - {fileID: 1876464244}
+  - {fileID: 782628375}
