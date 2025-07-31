@@ -599,6 +599,10 @@ setInterval(() => {
       if (typeof input.rotationDelta === "number")
         p.rotationY = (p.rotationY + input.rotationDelta + 360) % 360;
 
+      if (typeof input.rotationVerticalDelta === "number") {
+        p.rotationX = (p.rotationX || -169.2) - input.rotationVerticalDelta; 
+        p.rotationX = Math.max(-189.7, Math.min(-137, p.rotationX)); 
+    }
       let candidate = { ...p, x: p.x + dx, y: p.y, z: p.z + dz };
 
       // Checking prt

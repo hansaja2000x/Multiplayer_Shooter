@@ -360,11 +360,11 @@ public class NetworkManager : MonoBehaviour
         Emit("joinRoom", new { roomCode, uuId = playerUuId });
     }
 
-    public void SendInput(bool f, bool b, bool l, bool r, float rotDelta)
+    public void SendInput(bool f, bool b, bool l, bool r, float rotDelta, float rotVertical)
     {
         var json = JsonConvert.SerializeObject(new
         {
-            input = new { forward = f, backward = b, left = l, right = r, rotationDelta = rotDelta }
+            input = new { forward = f, backward = b, left = l, right = r, rotationDelta = rotDelta, rotationVerticalDelta = rotVertical }
         });
         socket.emit("move", json);
     }
@@ -551,7 +551,9 @@ public class NetworkManager : MonoBehaviour
 
             pgo.transform.position = new Vector3(pd.x, pd.y, pd.z);
             pgo.transform.rotation = Quaternion.Euler(0, pd.rotationY, 0);
-            pgo.GetComponent<PlayerAnimationHandler>().SetAnimState(pd.forward, pd.right);
+            PlayerAnimationHandler playerAnim = pgo.GetComponent<PlayerAnimationHandler>();
+            playerAnim.SetVerticleAngle(pd.rotationX);
+            playerAnim.SetAnimState(pd.forward, pd.right);
         }
     }
 
@@ -638,6 +640,7 @@ public class NetworkManager : MonoBehaviour
     {
         public float x, y, z;
         public float rotationY;
+        public float rotationX;
         public float forward, right;
         public float health;
         public string uuId;

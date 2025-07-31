@@ -9,11 +9,13 @@ public class PlayerInput : MonoBehaviour
     [SerializeField] private bool isOnPC;
     private Button shootButton;
     private float lastTouchX;
+    private float lastTouchY;
     private bool isCursorLocked = false;
     private bool isTouching = false;
 
     private bool fLast, bLast, lLast, rLast;
     private float rotLast;
+    private float rotUpLast;
 
     void Start()
     {
@@ -41,12 +43,13 @@ public class PlayerInput : MonoBehaviour
         bool l = Input.GetKey(KeyCode.A);
         bool r = Input.GetKey(KeyCode.D);
         float rot = Input.GetAxis("Mouse X") * 5f;
+        float rotY = Input.GetAxis("Mouse Y") * 5f;
 
         // Send only if changed
-        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f)
+        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f || Mathf.Abs(rotY - rotLast) > 0.0001f)
         {
-            NetworkManager.Instance.SendInput(f, b, l, r, rot);
-            fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot;
+            NetworkManager.Instance.SendInput(f, b, l, r, rot, rotY);
+            fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot; rotUpLast = rotY;
         }
 
         if (Input.GetMouseButtonDown(0))
@@ -60,6 +63,7 @@ public class PlayerInput : MonoBehaviour
         float vertical = variableJoystick.Vertical;
         float horizontal = variableJoystick.Horizontal;
         float rot = 0f;
+        float rotY = 0f;
 
         bool f = false;
         bool b = false;
@@ -140,17 +144,22 @@ public class PlayerInput : MonoBehaviour
             if (touch.phase == TouchPhase.Began)
             {
                 lastTouchX = touch.position.x;
+                lastTouchY = touch.position.y;
                 isTouching = true;
             }
             else if (touch.phase == TouchPhase.Moved && isTouching)
             {
                 float deltaX = touch.position.x - lastTouchX;
+                float deltaY = touch.position.y - lastTouchY;
                 rot = deltaX * sensitivity * Time.deltaTime * 60f; // Frame-rate independent, assuming 60 FPS target
+                rotY = deltaY * sensitivity * Time.deltaTime * 60f;
+
                 lastTouchX = touch.position.x;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
                 rot = 0f;
+                rotY = 0f;
                 isTouching = false;
             }
 
@@ -159,10 +168,10 @@ public class PlayerInput : MonoBehaviour
         }
 
         // Send only if changed (use a small epsilon for float comparison)
-        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f)
+        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f || Mathf.Abs(rotY - rotUpLast) > 0.0001f)
         {
-            NetworkManager.Instance.SendInput(f, b, l, r, rot);
-            fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot;
+            NetworkManager.Instance.SendInput(f, b, l, r, rot, rotY);
+            fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot; rotUpLast = rotY;
         }
     }
 
@@ -221,6 +230,6 @@ public class PlayerInput : MonoBehaviour
         // Cursor.lockState = CursorLockMode.None;
         // Cursor.visible = true;
         isCursorLocked = false;
-        NetworkManager.Instance.SendInput(false, false, false, false, 0f);
+        NetworkManager.Instance.SendInput(false, false, false, false, 0f, 0f);
     }
 }
