@@ -24233,9 +24233,9 @@ MonoBehaviour:
   - {fileID: 738632784297421705, guid: 9bdebb4b0a92bb24e8066ed413d453b4, type: 3}
   characterPrefabMappings:
   - characterKey: Vayra_M
-    prefab: {fileID: 3124642863207360825, guid: da54a8fb79b78774686a769fc1ad685d, type: 3}
+    prefab: {fileID: 7364221891404872987, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
   - characterKey: Ravex_M
-    prefab: {fileID: 3124642863207360825, guid: eb55c30a895fd794ba7104bb0d98fce5, type: 3}
+    prefab: {fileID: 7364221891404872987, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
   isOnPC: 0
 --- !u!4 &1496935803
 Transform:
@@ -36672,11 +36672,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7364221891404872987, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7621635957581792054, guid: 15e87fd066be1a344a03f1be380c3a3a, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
