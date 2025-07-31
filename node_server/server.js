@@ -262,7 +262,7 @@ app.post("/api/createRoom", async (req, res) => {
       bullets: [],
       obstacles: [
         { id: 0, x: -12.54, y: 1.1039, z: 16.4442, size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0, prefabType: 0 },
-        { id: 1, x: 11.87, y: 1.1039, z: 0, size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0, prefabType: 0 },
+        { id: 1, x: 11.87, y: 1.1039, z: 16.4442, size: { x: 1, y: 3.2, z: 33.28 }, rotationY: 0, prefabType: 0 },
         { id: 2, x: -0.396, y: 1.1459, z: 32.05, size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0, prefabType: 0 },
         { id: 3, x: -0.396, y: 1.1459, z: -0.488, size: { x: 24.65, y: 3.29, z: 1 }, rotationY: 0, prefabType: 0 },
       ], // walls
@@ -295,8 +295,8 @@ app.post("/api/createRoom", async (req, res) => {
         gameStateId: roomCode,
         name: room.name,
         createDate: new Date(),
-        link1: `http://localhost:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
-        link2: `http://localhost:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
+        link1: `http://192.168.1.8:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
+        link2: `http://192.168.1.8:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
       }
     };
 

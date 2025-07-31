@@ -82,7 +82,7 @@ public class NetworkManager : MonoBehaviour
     private void Start()
     {
         Debug.Log("About to connect socket...");
-        socket = SocketIo.establishSocketConnection("ws://localhost:3000");
+        socket = SocketIo.establishSocketConnection("ws://192.168.1.8:3000");
         //socket = SocketIo.establishSocketConnection("wss://testb.xcodelab.xyz");
 
         RegisterEvents();
