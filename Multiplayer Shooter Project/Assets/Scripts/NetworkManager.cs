@@ -21,6 +21,9 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private TMP_Text txtRoomDisplay;
     [SerializeField] private TMP_Text txtErrorMessage;
     [SerializeField] private TMP_Text roundDisplay;
+    [SerializeField] private TMP_Text roundProgressText; // NEW: Additional text for "Round X/3" display
+    [SerializeField] private TMP_Text countdownText; // NEW: For countdown and messages
+    [SerializeField] private GameObject countdownPanel; // NEW: Separate panel for countdown UI
     [SerializeField] private GameObject menuUI;
     [SerializeField] private GameObject gameplayUI;
     [SerializeField] private GameObject UICamera;
@@ -32,6 +35,10 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private Button shootButton;
     [SerializeField] private VariableJoystick variableJoystick;
     [SerializeField] private GameObject lobbyRobo;
+
+    [Header("URL Configuration")]
+    [SerializeField] private string url = "ws://192.168.1.12:3000";
+
 
     [Header("Prefabs")]
     [SerializeField] private GameObject playerPrefab;
@@ -54,6 +61,11 @@ public class NetworkManager : MonoBehaviour
     [Header("Game Type")]
     [SerializeField] private bool isOnPC;
 
+    [Header("Cinematic Settings")]
+    [SerializeField] private Vector3 cinematicCameraOffset = new Vector3(0, 10, -5); // NEW: Configurable camera position offset for intro
+    [SerializeField] private Vector3 cinematicCameraRotation = new Vector3(0, 0, 0); // NEW: Configurable camera rotation for intro
+    [SerializeField] private float cinematicDuration = 3f; // Optional: Configurable duration
+
     // -------- Internal state --------
     private Socket socket;
     private string myPlayerId;
@@ -62,6 +74,11 @@ public class NetworkManager : MonoBehaviour
     private readonly Dictionary<int, GameObject> bullets = new();
     private readonly Dictionary<int, GameObject> movingObstacles = new();
     private readonly Queue<Action> mainThreadCalls = new();
+    private readonly Dictionary<string, string> playerNames = new();
+    private bool isFirstRound = true;
+
+    [Header("Game Settings")]
+    [SerializeField] private int totalRounds = 3; // NEW: Configurable total rounds (default 3)
 
     #region Unity lifecycle
     private void Awake()
@@ -81,13 +98,12 @@ public class NetworkManager : MonoBehaviour
 
     private void Start()
     {
-        Debug.Log("About to connect socket...");
-        socket = SocketIo.establishSocketConnection("ws://192.168.1.12:3000");
-        //socket = SocketIo.establishSocketConnection("wss://deltabreachb.gameonworld.ai");
+        Debug.Log("About to connect socket "+ url);
+        socket = SocketIo.establishSocketConnection(url);
 
         RegisterEvents();
         socket.connect();
-        Debug.Log("Socket connect() called");
+        Debug.Log("Socket connect() called" + url);
 
         menuUI.SetActive(true);
         gameplayUI.SetActive(false);
@@ -168,7 +184,7 @@ public class NetworkManager : MonoBehaviour
         }
         menuUI.SetActive(false);
         lobbyRobo.SetActive(false);
-        gameplayUI.SetActive(true);
+        // gameplayUI.SetActive(true); // Moved to after countdown
         UICamera.SetActive(false);
     }
 
@@ -206,12 +222,23 @@ public class NetworkManager : MonoBehaviour
     {
         SpawnPlayer(d.players);
         SyncMovingObstacles(d.movingObstacles);
+        SetupCamera();
     }
 
     private void OnNewPlayerConnected(InitData d)
     {
         SpawnPlayer(d.players);
         SyncMovingObstacles(d.movingObstacles);
+    }
+
+    private void SetupCamera()
+    {
+        ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
+        if (cam != null && players.ContainsKey(myPlayerId))
+        {
+            cam.SetTarget(players[myPlayerId].transform);
+            cam.SetMode(ThirdPersonCamera.CameraMode.Behind);
+        }
     }
 
     private void OnStateUpdate(StateUpdateData d)
@@ -255,6 +282,24 @@ public class NetworkManager : MonoBehaviour
                 target.GetComponent<PlayerAnimationHandler>().DeathAnimation();
             }
         }
+
+        if (d.newHealth <= 0)
+        {
+            string killerId = GetOpponentId();
+            if (killerId == null) return;
+            ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
+            if (cam == null) return;
+            if (d.targetId == myPlayerId)
+            {
+                cam.SetTarget(players[killerId].transform);
+                cam.SetMode(ThirdPersonCamera.CameraMode.FrontBadass);
+            }
+            else
+            {
+                cam.SetTarget(players[myPlayerId].transform);
+                cam.SetMode(ThirdPersonCamera.CameraMode.FrontBadass);
+            }
+        }
     }
 
     private void OnRoundOver(RoundOverResponse d)
@@ -268,12 +313,29 @@ public class NetworkManager : MonoBehaviour
         // NEW: show "won the round." text and auto-hide after 3s
         gameEndHandler.RoundEnd(d.winnerName);
         Debug.Log("Round winner: " + d.winnerName);
+
+        string winnerId = GetPlayerIdByName(d.winnerName);
+        if (winnerId == null) return;
+        ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
+        if (cam == null) return;
+        cam.SetTarget(players[winnerId].transform);
+        cam.SetMode(ThirdPersonCamera.CameraMode.FrontBadass);
+
+        // Hide gameplay UI when round finishes to prepare for countdown
+        gameplayUI.SetActive(false);
     }
 
     private void OnGameWon(GameWonResponse d)
     {
         gameEndHandler.GameEnd(d.winnerName);
         Debug.Log("Game winner: " + d.winnerName);
+
+        string winnerId = GetPlayerIdByName(d.winnerName);
+        if (winnerId == null) return;
+        ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
+        if (cam == null) return;
+        cam.SetTarget(players[winnerId].transform);
+        cam.SetMode(ThirdPersonCamera.CameraMode.FrontBadass);
     }
 
     private void OnPlayerDisconnected(PlayerDisconnectedResponse d)
@@ -299,20 +361,105 @@ public class NetworkManager : MonoBehaviour
         gameEndHandler.PlayerDropped();
         if (players.TryGetValue(myPlayerId, out var me))
             me.GetComponent<PlayerInput>().EndGame();
+
+        ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
+        if (cam != null)
+        {
+            cam.SetTarget(players[myPlayerId].transform);
+            cam.SetMode(ThirdPersonCamera.CameraMode.FrontBadass);
+        }
     }
 
     private void OnRoundStart(RoundStartData d)
     {
         roundDisplay.text = "Round " + d.currentRound;
+        if (roundProgressText != null)
+        {
+            roundProgressText.text = "Round " + d.currentRound + "/" + totalRounds;
+        }
+        StartCoroutine(StartRoundCoroutine());
+    }
+
+    private IEnumerator StartRoundCoroutine()
+    {
+        // Disable input at the start
+        if (players.TryGetValue(myPlayerId, out var me))
+            me.GetComponent<PlayerInput>().EndGame();
+
+        ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
+        if (cam != null)
+        {
+            cam.SetTarget(players[myPlayerId].transform);
+            cam.SetMode(ThirdPersonCamera.CameraMode.Behind);
+        }
+
+        gameplayUI.SetActive(false);
+        countdownPanel.SetActive(true);
+
+        if (isFirstRound)
+        {
+            yield return StartCoroutine(CinematicIntroAndCountdown());
+            isFirstRound = false;
+        }
+        else
+        {
+            yield return StartCoroutine(SwitchPositionsAndCountdown());
+        }
+
         foreach (var playerKV in players)
         {
             playerKV.Value.GetComponent<PlayerAnimationHandler>().Revive();
         }
-        if (players.TryGetValue(myPlayerId, out var me))
+        if (players.TryGetValue(myPlayerId, out var meAgain))
         {
-            var playerInput = me.GetComponent<PlayerInput>();
-            playerInput.BeginRound(); // Assuming PlayerInput has a BeginRound method to re-enable input
+            var playerInput = meAgain.GetComponent<PlayerInput>();
+            playerInput.BeginRound(); // Re-enable input after countdown
         }
+
+        countdownPanel.SetActive(false);
+        gameplayUI.SetActive(true);
+    }
+
+    private IEnumerator CinematicIntroAndCountdown()
+    {
+        ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
+        if (cam != null) cam.enabled = false;
+
+        // Simple cinematic: position camera above the arena center
+        string opponentId = GetOpponentId();
+        if (opponentId == null) yield break;
+        Vector3 myPos = players[myPlayerId].transform.position;
+        Vector3 oppPos = players[opponentId].transform.position;
+        Vector3 center = (myPos + oppPos) / 2f;
+        Camera.main.transform.position = center + cinematicCameraOffset;
+        Camera.main.transform.rotation = Quaternion.Euler(cinematicCameraRotation);
+
+        yield return new WaitForSeconds(cinematicDuration);
+
+        if (cam != null) cam.enabled = true;
+
+        yield return StartCoroutine(CountdownCoroutine());
+    }
+
+    private IEnumerator SwitchPositionsAndCountdown()
+    {
+        countdownText.text = "Switching positions";
+        yield return new WaitForSeconds(2f); // Display duration
+        countdownText.text = "";
+        yield return StartCoroutine(CountdownCoroutine());
+    }
+
+    private IEnumerator CountdownCoroutine()
+    {
+        countdownText.text = "3";
+        yield return new WaitForSeconds(1f);
+        countdownText.text = "2";
+        yield return new WaitForSeconds(1f);
+        countdownText.text = "1";
+        yield return new WaitForSeconds(1f);
+        countdownText.text = "Start!";
+        yield return new WaitForSeconds(1f);
+        countdownText.text = "";
     }
     #endregion
 
@@ -412,6 +559,7 @@ public class NetworkManager : MonoBehaviour
                 }
                 GameObject go = Instantiate(prefab);
                 players[id] = go;
+                playerNames[id] = pd.name;
 
                 if (id != myPlayerId)
                 {
@@ -431,26 +579,6 @@ public class NetworkManager : MonoBehaviour
             }
 
             GameObject pgo = players[id];
-            if (id != myPlayerId)
-            {
-                PlayerInput playerInput = pgo.GetComponent<PlayerInput>();
-                playerInput.DeactivateCameraObject();
-                playerInput.enabled = false;
-                pgo.GetComponent<CanvasFacingCamera>().enabled = false;
-                var canvas = pgo.GetComponent<PlayerCanvasHandler>();
-                canvas.SetHealth(pd.health / 100f);
-                canvas.SetName(pd.name);
-                canvas.SetProfileImage(pd.profileImage);
-            }
-            else
-            {
-                healthSlider.value = pd.health / 100f;
-                PlayerInput playerInput = pgo.GetComponent<PlayerInput>();
-                playerInput.SetShootButton(shootButton);
-                playerInput.SetVariableJoystick(variableJoystick);
-                playerInput.SetIsOnPC(isOnPC);
-            }
-
             pgo.transform.position = new Vector3(pd.x, pd.y, pd.z);
             pgo.transform.rotation = Quaternion.Euler(0, pd.rotationY, 0);
             pgo.GetComponent<PlayerAnimationHandler>().SetAnimState(pd.forward, pd.right);
@@ -469,9 +597,6 @@ public class NetworkManager : MonoBehaviour
                 pgo.GetComponent<CanvasFacingCamera>().enabled = false;
                 var canvas = pgo.GetComponent<PlayerCanvasHandler>();
                 players[myPlayerId].GetComponent<CanvasFacingCamera>().AddCanvas(canvas.GetCanvasgameObject());
-                canvas.SetHealth(pd.health / 100f);
-                canvas.SetName(pd.name);
-                canvas.SetProfileImage(pd.profileImage);
             }
             else
             {
@@ -479,7 +604,6 @@ public class NetworkManager : MonoBehaviour
                 playerInput.SetShootButton(shootButton);
                 playerInput.SetVariableJoystick(variableJoystick);
                 playerInput.SetIsOnPC(isOnPC);
-                pgo.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();
                 healthSlider.value = pd.health / 100f;
             }
         }
@@ -527,6 +651,7 @@ public class NetworkManager : MonoBehaviour
                 }
                 GameObject go = Instantiate(prefab);
                 players[id] = go;
+                playerNames[id] = pd.name;
 
                 if (id != myPlayerId)
                 {
@@ -555,8 +680,6 @@ public class NetworkManager : MonoBehaviour
             {
                 var canvas = pgo.GetComponent<PlayerCanvasHandler>();
                 canvas.SetHealth(pd.health / 100f);
-                canvas.SetName(pd.name);
-                canvas.SetProfileImage(pd.profileImage);
             }
             else
             {
@@ -636,6 +759,24 @@ public class NetworkManager : MonoBehaviour
         }
     }
     #endregion
+
+    private string GetPlayerIdByName(string name)
+    {
+        foreach (var kv in playerNames)
+        {
+            if (kv.Value == name) return kv.Key;
+        }
+        return null;
+    }
+
+    private string GetOpponentId()
+    {
+        foreach (var key in players.Keys)
+        {
+            if (key != myPlayerId) return key;
+        }
+        return null;
+    }
 
     #region DTOs
     [Serializable] public class YourIdResponse { public string id; public string name; public string profileImage; }

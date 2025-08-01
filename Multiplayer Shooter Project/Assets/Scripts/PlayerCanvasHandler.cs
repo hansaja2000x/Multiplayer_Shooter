@@ -12,6 +12,8 @@ public class PlayerCanvasHandler : MonoBehaviour
     [SerializeField] private Slider healthSlider;
     [SerializeField] private RawImage profileImage;
 
+    private string currentProfileUrl = "";
+
     public void DeactivateCanvas()
     {
         otherPlayerCanvas.SetActive(false);
@@ -29,10 +31,9 @@ public class PlayerCanvasHandler : MonoBehaviour
 
     public void SetProfileImage(string url)
     {
-        if (!string.IsNullOrEmpty(url))
-        {
-            StartCoroutine(LoadProfileImage(url));
-        }
+        if (string.IsNullOrEmpty(url) || url == currentProfileUrl) return;
+        currentProfileUrl = url;
+        StartCoroutine(LoadProfileImage(url));
     }
 
     private IEnumerator LoadProfileImage(string url)

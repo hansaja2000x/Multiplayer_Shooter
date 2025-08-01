@@ -14,6 +14,7 @@ public class PlayerInput : MonoBehaviour
     [SerializeField, Range(0.1f, 2f)] private float rotationSensitivity = 0.35f;
     [SerializeField] private bool invertYRotation = false; // Option to invert vertical rotation
     [SerializeField, Range(0.1f, 1f)] private float rotationDeadzone = 0.1f; // Pixel delta threshold for rotation to ignore micro-movements
+    [SerializeField] private bool verticalAimEnabled = true; // Toggle to enable/disable vertical gun aim
 
     private Button shootButton;
     private float lastTouchX;
@@ -52,6 +53,9 @@ public class PlayerInput : MonoBehaviour
         bool r = Input.GetKey(KeyCode.D);
         float rot = Input.GetAxis("Mouse X") * 5f;
         float rotY = Input.GetAxis("Mouse Y") * 5f;
+
+        // Disable vertical aim if toggled off
+        if (!verticalAimEnabled) rotY = 0f;
 
         // Send only if changed
         if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f || Mathf.Abs(rotY - rotUpLast) > 0.0001f)
@@ -194,6 +198,9 @@ public class PlayerInput : MonoBehaviour
             rotationTouchId = -1;
         }
 
+        // Disable vertical aim if toggled off
+        if (!verticalAimEnabled) rotY = 0f;
+
         // Send only if changed (use a small epsilon for float comparison)
         if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f || Mathf.Abs(rotY - rotUpLast) > 0.0001f)
         {
@@ -259,5 +266,11 @@ public class PlayerInput : MonoBehaviour
         // Cursor.visible = true;
         isCursorLocked = false;
         NetworkManager.Instance.SendInput(false, false, false, false, 0f, 0f);
+    }
+
+    // Public method to toggle vertical aim enabled state
+    public void ToggleVerticalAim()
+    {
+        verticalAimEnabled = !verticalAimEnabled;
     }
 }

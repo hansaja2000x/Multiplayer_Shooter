@@ -314,8 +314,8 @@ app.post("/api/createRoom", async (req, res) => {
         gameStateId: roomCode,
         name: room.name,
         createDate: new Date(),
-        link1: `http://192.168.1.12:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
-        link2: `http://192.168.1.12:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
+        link1: `http://192.168.1.8:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
+        link2: `http://192.168.1.8:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
       }
     };
 
@@ -483,7 +483,7 @@ io.on("connection", socket => {
     if (!player || !player.canShoot) return;
 
     player.canShoot = false;
-    setTimeout(() => player.canShoot = true, 300);
+    setTimeout(() => player.canShoot = true, 200);
 
     const rad = degToRad(player.rotationY);
     // Offset bullet to the right of the player (positive X direction)
@@ -772,7 +772,7 @@ setInterval(() => {
           roomBroadcast(code, "roundStart", { currentRound: room.currentRound });
           room.isPlaying = true;
           room.roundEnding = false;
-        }, 3000);
+        }, 5000);
       }
     }
 

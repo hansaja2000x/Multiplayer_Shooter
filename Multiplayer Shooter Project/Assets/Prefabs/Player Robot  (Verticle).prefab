@@ -1202,8 +1202,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 10, y: 0}
+  m_AnchoredPosition: {x: -4.986, y: 0}
+  m_SizeDelta: {x: 0.038, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &114347303672725642
 CanvasRenderer:
@@ -1507,7 +1507,7 @@ GameObject:
   - component: {fileID: 3105950339865006847}
   m_Layer: 0
   m_Name: CameraPivot
-  m_TagString: Untagged
+  m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1650,6 +1650,9 @@ MonoBehaviour:
   collisionLayers:
     serializedVersion: 2
     m_Bits: 8
+  frontDistance: 3
+  badassHeightOffset: -0.5
+  currentMode: 0
 --- !u!1 &3862425032879635085
 GameObject:
   m_ObjectHideFlags: 0
@@ -2968,6 +2971,7 @@ MonoBehaviour:
   rotationSensitivity: 0.35
   invertYRotation: 0
   rotationDeadzone: 0.1
+  verticalAimEnabled: 0
 --- !u!114 &3714435043578619261
 MonoBehaviour:
   m_ObjectHideFlags: 0
