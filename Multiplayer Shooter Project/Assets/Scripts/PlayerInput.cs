@@ -6,7 +6,6 @@ public class PlayerInput : MonoBehaviour
 {
     [SerializeField] private GameObject cameraObj;
     [SerializeField] private VariableJoystick variableJoystick;
-    [SerializeField] private bool isOnPC;
 
     // New serialized fields for customization
     [SerializeField, Range(0.1f, 1f)] private float joystickDeadzone = 0.2f;
@@ -26,27 +25,36 @@ public class PlayerInput : MonoBehaviour
     private float rotLast;
     private float rotUpLast;
 
+    private bool isUsingPCInput = false;
+
     void Start()
     {
         LockCursor();
+
+        // Hide touch controls by default on non-mobile platforms
+        if (!Application.isMobilePlatform)
+        {
+            isUsingPCInput = true;
+            HideTouchControls();
+        }
     }
 
     void Update()
     {
         if (!isCursorLocked) return;
 
-        if (isOnPC)
+        // Detect PC input only on non-mobile platforms
+        if (!isUsingPCInput && !Application.isMobilePlatform)
         {
-            PcCalculations();
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D) ||
+                Mathf.Abs(Input.GetAxis("Mouse X")) > 0 || Mathf.Abs(Input.GetAxis("Mouse Y")) > 0)
+            {
+                isUsingPCInput = true;
+                HideTouchControls();
+            }
         }
-        else
-        {
-            TouchScreenCalculations();
-        }
-    }
 
-    private void PcCalculations()
-    {
+        // PC inputs
         bool f = Input.GetKey(KeyCode.W);
         bool b = Input.GetKey(KeyCode.S);
         bool l = Input.GetKey(KeyCode.A);
@@ -54,89 +62,82 @@ public class PlayerInput : MonoBehaviour
         float rot = Input.GetAxis("Mouse X") * 5f;
         float rotY = Input.GetAxis("Mouse Y") * 5f;
 
-        // Disable vertical aim if toggled off
+        // Disable vertical aim if toggled off for PC
         if (!verticalAimEnabled) rotY = 0f;
 
-        // Send only if changed
-        if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f || Mathf.Abs(rotY - rotUpLast) > 0.0001f)
+        // Touch movement inputs
+        if (variableJoystick != null)
         {
-            NetworkManager.Instance.SendInput(f, b, l, r, rot, rotY);
-            fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot; rotUpLast = rotY;
-        }
+            float vertical = variableJoystick.Vertical;
+            float horizontal = variableJoystick.Horizontal;
 
-        if (Input.GetMouseButtonDown(0))
-            NetworkManager.Instance.SendShoot();
-    }
+            // Apply deadzone
+            if (Mathf.Abs(vertical) < joystickDeadzone) vertical = 0f;
+            if (Mathf.Abs(horizontal) < joystickDeadzone) horizontal = 0f;
 
-    private void TouchScreenCalculations()
-    {
-        if (variableJoystick == null) return;
+            // Calculate absolute values for comparison
+            float absV = Mathf.Abs(vertical);
+            float absH = Mathf.Abs(horizontal);
 
-        float vertical = variableJoystick.Vertical;
-        float horizontal = variableJoystick.Horizontal;
-        float rot = 0f;
-        float rotY = 0f;
-
-        bool f = false;
-        bool b = false;
-        bool l = false;
-        bool r = false;
-
-        // Apply deadzone
-        if (Mathf.Abs(vertical) < joystickDeadzone) vertical = 0f;
-        if (Mathf.Abs(horizontal) < joystickDeadzone) horizontal = 0f;
-
-        // Calculate absolute values for comparison
-        float absV = Mathf.Abs(vertical);
-        float absH = Mathf.Abs(horizontal);
-
-        if (absV > 0 || absH > 0)
-        {
-            if (absV > absH)
+            if (absV > 0 || absH > 0)
             {
-                // Vertical dominant
-                const float diagonalThreshold = 2.093f; // approx tan(65°)
-                if (absH == 0 || absV / absH > diagonalThreshold)
+                bool f_touch = false;
+                bool b_touch = false;
+                bool l_touch = false;
+                bool r_touch = false;
+
+                if (absV > absH)
                 {
-                    // Pure vertical
-                    f = vertical > 0;
-                    b = vertical < 0;
+                    // Vertical dominant
+                    const float diagonalThreshold = 2.093f; // approx tan(65°)
+                    if (absH == 0 || absV / absH > diagonalThreshold)
+                    {
+                        // Pure vertical
+                        f_touch = vertical > 0;
+                        b_touch = vertical < 0;
+                    }
+                    else
+                    {
+                        // Diagonal
+                        f_touch = vertical > 0;
+                        b_touch = vertical < 0;
+                        l_touch = horizontal < 0;
+                        r_touch = horizontal > 0;
+                    }
+                }
+                else if (absH > absV)
+                {
+                    // Horizontal dominant
+                    const float diagonalThreshold = 2.093f;
+                    if (absV == 0 || absH / absV > diagonalThreshold)
+                    {
+                        // Pure horizontal
+                        l_touch = horizontal < 0;
+                        r_touch = horizontal > 0;
+                    }
+                    else
+                    {
+                        // Diagonal
+                        f_touch = vertical > 0;
+                        b_touch = vertical < 0;
+                        l_touch = horizontal < 0;
+                        r_touch = horizontal > 0;
+                    }
                 }
                 else
                 {
-                    // Diagonal
-                    f = vertical > 0;
-                    b = vertical < 0;
-                    l = horizontal < 0;
-                    r = horizontal > 0;
+                    // Equal (45°), treat as diagonal
+                    f_touch = vertical > 0;
+                    b_touch = vertical < 0;
+                    l_touch = horizontal < 0;
+                    r_touch = horizontal > 0;
                 }
-            }
-            else if (absH > absV)
-            {
-                // Horizontal dominant
-                const float diagonalThreshold = 2.093f;
-                if (absV == 0 || absH / absV > diagonalThreshold)
-                {
-                    // Pure horizontal
-                    l = horizontal < 0;
-                    r = horizontal > 0;
-                }
-                else
-                {
-                    // Diagonal
-                    f = vertical > 0;
-                    b = vertical < 0;
-                    l = horizontal < 0;
-                    r = horizontal > 0;
-                }
-            }
-            else
-            {
-                // Equal (45°), treat as diagonal
-                f = vertical > 0;
-                b = vertical < 0;
-                l = horizontal < 0;
-                r = horizontal > 0;
+
+                // Combine with PC inputs (OR for directions)
+                f |= f_touch;
+                b |= b_touch;
+                l |= l_touch;
+                r |= r_touch;
             }
         }
 
@@ -171,19 +172,24 @@ public class PlayerInput : MonoBehaviour
                 if (Mathf.Abs(deltaX) < rotationDeadzone) deltaX = 0f;
                 if (Mathf.Abs(deltaY) < rotationDeadzone) deltaY = 0f;
 
-                rot = deltaX * rotationSensitivity;
-                rotY = deltaY * rotationSensitivity;
+                float rot_touch = deltaX * rotationSensitivity;
+                float rotY_touch = deltaY * rotationSensitivity;
 
                 // Invert Y if enabled
-                if (invertYRotation) rotY = -rotY;
+                if (invertYRotation) rotY_touch = -rotY_touch;
+
+                // Disable vertical aim if toggled off for touch
+                if (!verticalAimEnabled) rotY_touch = 0f;
+
+                // Add to PC rotation
+                rot += rot_touch;
+                rotY += rotY_touch;
 
                 lastTouchX = touch.position.x;
                 lastTouchY = touch.position.y;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
-                rot = 0f;
-                rotY = 0f;
                 rotationTouchId = -1;
             }
 
@@ -193,19 +199,29 @@ public class PlayerInput : MonoBehaviour
 
         if (!foundRotationTouch)
         {
-            rot = 0f;
-            rotY = 0f;
             rotationTouchId = -1;
         }
 
-        // Disable vertical aim if toggled off
-        if (!verticalAimEnabled) rotY = 0f;
-
-        // Send only if changed (use a small epsilon for float comparison)
+        // Send only if changed
         if (f != fLast || b != bLast || l != lLast || r != rLast || Mathf.Abs(rot - rotLast) > 0.0001f || Mathf.Abs(rotY - rotUpLast) > 0.0001f)
         {
             NetworkManager.Instance.SendInput(f, b, l, r, rot, rotY);
             fLast = f; bLast = b; lLast = l; rLast = r; rotLast = rot; rotUpLast = rotY;
+        }
+
+        if (Input.GetMouseButtonDown(0))
+            NetworkManager.Instance.SendShoot();
+    }
+
+    private void HideTouchControls()
+    {
+        if (variableJoystick != null)
+        {
+            variableJoystick.gameObject.SetActive(false);
+        }
+        if (shootButton != null)
+        {
+            shootButton.gameObject.SetActive(false);
         }
     }
 
@@ -223,11 +239,6 @@ public class PlayerInput : MonoBehaviour
     public void SetVariableJoystick(VariableJoystick variableJoystick)
     {
         this.variableJoystick = variableJoystick;
-    }
-
-    public void SetIsOnPC(bool isOnPC)
-    {
-        this.isOnPC = isOnPC;
     }
 
     public void DeactivateCameraObject()
@@ -255,15 +266,21 @@ public class PlayerInput : MonoBehaviour
 
     private void LockCursor()
     {
-        // Cursor.lockState = CursorLockMode.Locked;
-        // Cursor.visible = false;
+        if (!Application.isMobilePlatform)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
         isCursorLocked = true;
     }
 
     private void UnlockCursor()
     {
-        // Cursor.lockState = CursorLockMode.None;
-        // Cursor.visible = true;
+        if (!Application.isMobilePlatform)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
         isCursorLocked = false;
         NetworkManager.Instance.SendInput(false, false, false, false, 0f, 0f);
     }

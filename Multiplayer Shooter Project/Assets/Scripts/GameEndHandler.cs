@@ -5,8 +5,7 @@ using TMPro;
 
 public class GameEndHandler : MonoBehaviour
 {
-    [SerializeField] private string localPlayerName = "Player"; // Set this to the local player's name, e.g., via script or Inspector
-
+    [SerializeField] public string localPlayerName = "Player"; // Set this to the local player's name, e.g., via script or Inspector
     [SerializeField] private string winMessage = "won the game.";
     [SerializeField] private string loseMessage = "lost the game.";
     [SerializeField] private string roundWinMessage = "won the round.";
@@ -57,7 +56,7 @@ public class GameEndHandler : MonoBehaviour
     public void PlayerDropped()
     {
         endGameEvents.Invoke();
-        playerNameText.text = localPlayerName;
-        statusText.text = winMessage; // Treat as a win for the local player
+        playerNameText.text = "";
+        statusText.text = dropMessage; // Treat as a win for the local player
     }
 }

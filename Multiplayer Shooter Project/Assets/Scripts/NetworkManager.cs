@@ -35,6 +35,10 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private Button shootButton;
     [SerializeField] private VariableJoystick variableJoystick;
     [SerializeField] private GameObject lobbyRobo;
+    [SerializeField] private TMP_Text timerText; // NEW: Text for displaying remaining time (e.g., "05:00")
+    [SerializeField] private TMP_Text waitingTimerText; // NEW: Text for waiting timer display
+    [SerializeField] private TMP_Text playerRoundWinsText; // NEW: Text for current player's round wins
+    [SerializeField] private TMP_Text opponentRoundWinsText; // NEW: Text for opponent's round wins
 
     [Header("URL Configuration")]
     [SerializeField] private string url = "ws://192.168.1.12:3000";
@@ -58,9 +62,6 @@ public class NetworkManager : MonoBehaviour
 
     private Dictionary<string, GameObject> characterPrefabs = new Dictionary<string, GameObject>();
 
-    [Header("Game Type")]
-    [SerializeField] private bool isOnPC;
-
     [Header("Cinematic Settings")]
     [SerializeField] private Vector3 cinematicCameraOffset = new Vector3(0, 10, -5); // NEW: Configurable camera position offset for intro
     [SerializeField] private Vector3 cinematicCameraRotation = new Vector3(0, 0, 0); // NEW: Configurable camera rotation for intro
@@ -71,6 +72,7 @@ public class NetworkManager : MonoBehaviour
     private string myPlayerId;
     private string currentRoomCode;
     private readonly Dictionary<string, GameObject> players = new();
+    private readonly Dictionary<string, string> playerUuids = new();
     private readonly Dictionary<int, GameObject> bullets = new();
     private readonly Dictionary<int, GameObject> movingObstacles = new();
     private readonly Queue<Action> mainThreadCalls = new();
@@ -79,6 +81,11 @@ public class NetworkManager : MonoBehaviour
 
     [Header("Game Settings")]
     [SerializeField] private int totalRounds = 3; // NEW: Configurable total rounds (default 3)
+    [SerializeField] private float gameDuration = 300f; // NEW: Game duration in seconds (5 minutes)
+
+    private int expectedRound = 1; // NEW: Track expected next round for detecting restarts
+    private Coroutine timerCoroutine; // NEW: Reference to the timer coroutine
+    private int currentRemaining;
 
     #region Unity lifecycle
     private void Awake()
@@ -94,11 +101,12 @@ public class NetworkManager : MonoBehaviour
                 characterPrefabs.Add(mapping.characterKey, mapping.prefab);
             }
         }
+        currentRemaining = (int)gameDuration;
     }
 
     private void Start()
     {
-        Debug.Log("About to connect socket "+ url);
+        Debug.Log("About to connect socket " + url);
         socket = SocketIo.establishSocketConnection(url);
 
         RegisterEvents();
@@ -109,6 +117,30 @@ public class NetworkManager : MonoBehaviour
         gameplayUI.SetActive(false);
 
         StartCoroutine(WaitForSocketConnection());
+        timerCoroutine = StartCoroutine(TimeTicker());
+    }
+
+    private IEnumerator TimeTicker()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(1f);
+            if (gameplayUI.activeSelf)
+            {
+                currentRemaining = Mathf.Max(0, currentRemaining - 1);
+                UpdateTimerText();
+            }
+        }
+    }
+
+    private void UpdateTimerText()
+    {
+        if (timerText != null)
+        {
+            int minutes = currentRemaining / 60;
+            int seconds = currentRemaining % 60;
+            timerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
+        }
     }
 
     private IEnumerator WaitForSocketConnection()
@@ -119,6 +151,7 @@ public class NetworkManager : MonoBehaviour
         }
 
         Debug.Log("Socket connected!");
+        yield return new WaitForSeconds(3f);
         JoinRoom();
     }
 
@@ -145,6 +178,7 @@ public class NetworkManager : MonoBehaviour
         socket.on("yourId", d => Queue(() => OnYourId(Parse<YourIdResponse>(d))));
         socket.on("roomJoined", d => Queue(() => OnRoomJoined(Parse<RoomJoinedResponse>(d))));
         socket.on("errorRoom", d => Queue(() => OnErrorRoom(Parse<ErrorRoomResponse>(d))));
+        socket.on("waitingForOpponent", d => Queue(() => OnWaitingForOpponent(Parse<WaitingForOpponentResponse>(d)))); // NEW
         socket.on("init", d => Queue(() => OnInit(Parse<InitData>(d))));
         socket.on("newPlayerConnected", d => Queue(() => OnNewPlayerConnected(Parse<InitData>(d))));
         socket.on("stateUpdate", d => Queue(() => OnStateUpdate(Parse<StateUpdateData>(d))));
@@ -157,6 +191,9 @@ public class NetworkManager : MonoBehaviour
         socket.on("playerDropped", d => Queue(() => OnPlayerDropped(Parse<PlayerDisconnectedResponse>(d))));
         socket.on("gameOver", d => Queue(() => { Debug.Log("Received gameOver"); SendGameOver(); }));
         socket.on("roundStart", d => Queue(() => OnRoundStart(Parse<RoundStartData>(d))));
+        socket.on("countdown", d => Queue(() => OnCountdown(Parse<CountdownData>(d))));
+        socket.on("roundBegin", _ => Queue(() => OnRoundBegin()));
+        socket.on("timerSync", d => Queue(() => OnTimerSync(Parse<TimerSyncData>(d))));
     }
     #endregion
 
@@ -184,7 +221,7 @@ public class NetworkManager : MonoBehaviour
         }
         menuUI.SetActive(false);
         lobbyRobo.SetActive(false);
-        // gameplayUI.SetActive(true); // Moved to after countdown
+        gameEndHandler.localPlayerName = d.name;
         UICamera.SetActive(false);
     }
 
@@ -218,8 +255,27 @@ public class NetworkManager : MonoBehaviour
         errorAnimator.SetTrigger("Start");
     }
 
+    // NEW: Handle waiting for opponent
+    private void OnWaitingForOpponent(WaitingForOpponentResponse d)
+    {
+        menuUI.SetActive(true);
+        StartCoroutine(WaitingTimerCoroutine(d.timeout / 1000));
+    }
+
+    private IEnumerator WaitingTimerCoroutine(int seconds)
+    {
+        for (int i = seconds; i >= 0; i--)
+        {
+            waitingTimerText.text = $"Waiting for opponent: {i} seconds";
+            yield return new WaitForSeconds(1);
+        }
+        // Timer expired, server will handle win, but hide panel if needed
+        menuUI.SetActive(false);
+    }
+
     private void OnInit(InitData d)
     {
+        menuUI.SetActive(false); // NEW: Hide waiting panel when game initializes
         SpawnPlayer(d.players);
         SyncMovingObstacles(d.movingObstacles);
         SetupCamera();
@@ -227,6 +283,7 @@ public class NetworkManager : MonoBehaviour
 
     private void OnNewPlayerConnected(InitData d)
     {
+        menuUI.SetActive(false); // NEW: Hide waiting panel when new player connects
         SpawnPlayer(d.players);
         SyncMovingObstacles(d.movingObstacles);
     }
@@ -241,11 +298,35 @@ public class NetworkManager : MonoBehaviour
         }
     }
 
+
     private void OnStateUpdate(StateUpdateData d)
     {
         UpdatePlayers(d.players);
         SyncBullets(d.bullets);
         SyncMovingObstacles(d.movingObstacles);
+        UpdateRoundWins(d.roundWins); // NEW: Update round wins UI
+    }
+
+    private void UpdateRoundWins(Dictionary<string, int> roundWins)
+    {
+        if (roundWins == null) return;
+
+        string myUuid = playerUuids.ContainsKey(myPlayerId) ? playerUuids[myPlayerId] : null;
+        string opponentId = GetOpponentId();
+        string opponentUuid = opponentId != null && playerUuids.ContainsKey(opponentId) ? playerUuids[opponentId] : null;
+
+        if (playerRoundWinsText != null && myUuid != null)
+        {
+            int myWins = roundWins.ContainsKey(myUuid) ? roundWins[myUuid] : 0;
+            playerRoundWinsText.text = $"{playerNameText.text}: {myWins} Wins";
+        }
+
+        if (opponentRoundWinsText != null && opponentUuid != null)
+        {
+            int opponentWins = roundWins.ContainsKey(opponentUuid) ? roundWins[opponentUuid] : 0;
+            string opponentName = playerNames.ContainsKey(opponentId) ? playerNames[opponentId] : "Opponent";
+            opponentRoundWinsText.text = $"{opponentName}: {opponentWins} Wins";
+        }
     }
 
     private void OnBulletRemove(BulletRemoveResponse d)
@@ -336,6 +417,15 @@ public class NetworkManager : MonoBehaviour
         if (cam == null) return;
         cam.SetTarget(players[winnerId].transform);
         cam.SetMode(ThirdPersonCamera.CameraMode.FrontBadass);
+
+        // NEW: Stop the timer on game won
+        if (timerCoroutine != null)
+        {
+            StopCoroutine(timerCoroutine);
+            timerCoroutine = null;
+            currentRemaining = 0;
+            UpdateTimerText();
+        }
     }
 
     private void OnPlayerDisconnected(PlayerDisconnectedResponse d)
@@ -368,15 +458,37 @@ public class NetworkManager : MonoBehaviour
             cam.SetTarget(players[myPlayerId].transform);
             cam.SetMode(ThirdPersonCamera.CameraMode.FrontBadass);
         }
+
+        // NEW: Stop the timer on player dropped
+        if (timerCoroutine != null)
+        {
+            StopCoroutine(timerCoroutine);
+            timerCoroutine = null;
+            currentRemaining = 0;
+            UpdateTimerText();
+        }
     }
 
     private void OnRoundStart(RoundStartData d)
     {
+        // NEW: Detect game restart on tie (currentRound reset to 1 when expected higher)
+        if (d.currentRound == 1 && expectedRound > 1)
+        {
+            // Restart timer on game restart
+            currentRemaining = (int)gameDuration;
+            UpdateTimerText();
+            isFirstRound = true; // Optional: Replay cinematic on restart
+        }
+
         roundDisplay.text = "Round " + d.currentRound;
         if (roundProgressText != null)
         {
             roundProgressText.text = "Round " + d.currentRound + "/" + totalRounds;
         }
+
+        // NEW: Update expected next round
+        expectedRound = d.currentRound + 1;
+
         StartCoroutine(StartRoundCoroutine());
     }
 
@@ -395,32 +507,29 @@ public class NetworkManager : MonoBehaviour
 
         gameplayUI.SetActive(false);
         countdownPanel.SetActive(true);
+        countdownText.text = "";
 
         if (isFirstRound)
         {
-            yield return StartCoroutine(CinematicIntroAndCountdown());
-            isFirstRound = false;
+            yield return StartCoroutine(CinematicIntro());
         }
         else
         {
-            yield return StartCoroutine(SwitchPositionsAndCountdown());
+            countdownText.text = "Switching positions";
+            yield return new WaitForSeconds(2f);
+            countdownText.text = "";
         }
+        Emit("readyForCountdown");
 
         foreach (var playerKV in players)
         {
             playerKV.Value.GetComponent<PlayerAnimationHandler>().Revive();
         }
-        if (players.TryGetValue(myPlayerId, out var meAgain))
-        {
-            var playerInput = meAgain.GetComponent<PlayerInput>();
-            playerInput.BeginRound(); // Re-enable input after countdown
-        }
 
-        countdownPanel.SetActive(false);
-        gameplayUI.SetActive(true);
+        isFirstRound = false;
     }
 
-    private IEnumerator CinematicIntroAndCountdown()
+    private IEnumerator CinematicIntro()
     {
         ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
         if (cam != null) cam.enabled = false;
@@ -437,29 +546,28 @@ public class NetworkManager : MonoBehaviour
         yield return new WaitForSeconds(cinematicDuration);
 
         if (cam != null) cam.enabled = true;
-
-        yield return StartCoroutine(CountdownCoroutine());
     }
 
-    private IEnumerator SwitchPositionsAndCountdown()
+    private void OnCountdown(CountdownData d)
     {
-        countdownText.text = "Switching positions";
-        yield return new WaitForSeconds(2f); // Display duration
-        countdownText.text = "";
-        yield return StartCoroutine(CountdownCoroutine());
+        countdownText.text = d.text;
     }
 
-    private IEnumerator CountdownCoroutine()
+    private void OnRoundBegin()
     {
-        countdownText.text = "3";
-        yield return new WaitForSeconds(1f);
-        countdownText.text = "2";
-        yield return new WaitForSeconds(1f);
-        countdownText.text = "1";
-        yield return new WaitForSeconds(1f);
-        countdownText.text = "Start!";
-        yield return new WaitForSeconds(1f);
-        countdownText.text = "";
+        countdownPanel.SetActive(false);
+        gameplayUI.SetActive(true);
+        if (players.TryGetValue(myPlayerId, out var meAgain))
+        {
+            var playerInput = meAgain.GetComponent<PlayerInput>();
+            playerInput.BeginRound(); // Re-enable input after countdown
+        }
+    }
+
+    private void OnTimerSync(TimerSyncData d)
+    {
+        currentRemaining = d.remaining;
+        UpdateTimerText();
     }
     #endregion
 
@@ -488,7 +596,21 @@ public class NetworkManager : MonoBehaviour
         }
         else
         {
-            Debug.Log("No URL parameters found — falling back to manual join.");
+            if (string.IsNullOrWhiteSpace(inputName.text))
+            {
+                txtErrorMessage.text = "Enter your name!";
+                errorAnimator.SetTrigger("Start");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(inputRoomCode.text))
+            {
+                txtErrorMessage.text = "Enter room code!";
+                errorAnimator.SetTrigger("Start");
+                return;
+            }
+
+            Emit("joinRoom", new { roomCode = inputRoomCode.text, name = inputName.text });
         }
     }
 
@@ -603,7 +725,6 @@ public class NetworkManager : MonoBehaviour
                 PlayerInput playerInput = pgo.GetComponent<PlayerInput>();
                 playerInput.SetShootButton(shootButton);
                 playerInput.SetVariableJoystick(variableJoystick);
-                playerInput.SetIsOnPC(isOnPC);
                 healthSlider.value = pd.health / 100f;
             }
         }
@@ -670,7 +791,6 @@ public class NetworkManager : MonoBehaviour
                     PlayerInput playerInput = go.GetComponent<PlayerInput>();
                     playerInput.SetShootButton(shootButton);
                     playerInput.SetVariableJoystick(variableJoystick);
-                    playerInput.SetIsOnPC(isOnPC);
                     go.GetComponent<PlayerCanvasHandler>().DeactivateCanvas();
                 }
             }
@@ -789,6 +909,9 @@ public class NetworkManager : MonoBehaviour
     [Serializable] public class BulletRemoveResponse { public int bulletId; }
     [Serializable] public class BulletHitObstacleResponse { public Position bulletPos; }
     [Serializable] public class RoundStartData { public int currentRound; }
+    [Serializable] public class CountdownData { public string text; }
+    [Serializable] public class TimerSyncData { public int remaining; }
+    [Serializable] public class WaitingForOpponentResponse { public int timeout; } // NEW
 
     [Serializable]
     public class PlayerData
@@ -835,8 +958,8 @@ public class NetworkManager : MonoBehaviour
         public Dictionary<string, PlayerData> players;
         public List<BulletData> bullets;
         public List<MovingObstacleData> movingObstacles;
+        public Dictionary<string, int> roundWins; // NEW: Added to store round win counts for each player (by UUID)
     }
-
     [Serializable]
     public class InitData
     {

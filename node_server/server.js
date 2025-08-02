@@ -291,7 +291,13 @@ app.post("/api/createRoom", async (req, res) => {
       winnerDataSent: false,
       currentRound: 1,
       maxRounds: 3,
-      roundWins: players.reduce((acc, p) => { acc[p.uuid] = 0; return acc; }, {})
+      roundWins: players.reduce((acc, p) => { acc[p.uuid] = 0; return acc; }, {}),
+      gameStartTime: 0,
+      activeTime: 0, // NEW: Accumulated active gameplay time
+      lastActiveTimestamp: 0, // NEW: For delta calculation
+      waitingForCountdown: 0, // NEW: Count of players needed to ready after countdown
+      waitingTimer: null, // NEW: Timer for waiting opponent
+      waitingStart: 0 // NEW: Start time for waiting
     };
 
     // Save to MongoDB
@@ -334,6 +340,86 @@ app.post("/api/createRoom", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+function startCountdown(code) {
+  const room = rooms[code];
+  if (!room) return;
+  let countdownPhase = 4; // 3,2,1,Start!
+  room.countdownInterval = setInterval(() => {
+    countdownPhase--;
+    let text = '';
+    if (countdownPhase === 3) text = '3';
+    else if (countdownPhase === 2) text = '2';
+    else if (countdownPhase === 1) text = '1';
+    else if (countdownPhase === 0) text = 'Start!';
+    roomBroadcast(code, "countdown", { text });
+    if (countdownPhase < 0) {
+      clearInterval(room.countdownInterval);
+      room.countdownInterval = null;
+      room.latestInputs = {};
+      room.isPlaying = true;
+      room.lastActiveTimestamp = Date.now();
+      if (room.gameStartTime === 0) {
+        room.gameStartTime = Date.now();
+      }
+      roomBroadcast(code, "roundBegin", {});
+    }
+  }, 1000);
+}
+
+function handleWaitingTimeout(code) {
+  const room = rooms[code];
+  if (!room || room.winnerDataSent) return;
+
+  const playerCount = Object.keys(room.players).length;
+  if (playerCount === 1) {
+    const playerId = Object.keys(room.players)[0];
+    const player = room.players[playerId];
+    const absentUuid = room.allowedPlayers.find(u => u !== player.uuId);
+
+    const winnerData = {
+      gameSessionUuid: code,
+      gameStatus: "FINISHED",
+      players: [
+        {
+          uuid: player.uuId,
+          points: 100,
+          userGameSessionStatus: "WON",
+        },
+        {
+          uuid: absentUuid,
+          points: 0,
+          userGameSessionStatus: "DROPPED",
+        },
+      ],
+    };
+    room.winnerDataSent = true;
+
+    roomBroadcast(code, "gameWon", { winnerName: player.name });
+    roomBroadcast(code, "gameOver", {});
+
+    console.log("Winner data (waiting timeout):", winnerData);
+    (async () => {
+      try {
+        const response = await axios.post(
+          `${SAFA_BACKEND_URL}/api/external_game/v1/game_session_finish`,
+          winnerData
+        );
+        console.log("Backend response (waiting timeout):", response.data);
+      } catch (error) {
+        console.error("Error sending winner data (waiting timeout):", error.response?.data || error);
+      }
+      // Clean up room
+      for (const pid in room.players) {
+        io.sockets.sockets.get(pid)?.disconnect();
+      }
+      if (room.countdownInterval) {
+        clearInterval(room.countdownInterval);
+      }
+      delete rooms[code];
+    })();
+  }
+}
 
 io.on("connection", socket => {
   let roomCode = null;
@@ -383,36 +469,45 @@ io.on("connection", socket => {
         isFalling: room.players[existingPlayerId].isFalling
       };
       room.players[socket.id] = p;
-      // Wait until 2 players have joined before starting game
+      emitJSON(socket, "yourId", {
+        id: socket.id,
+        name: p.name,
+        profileImage: p.profileImage,
+        characterKey: p.characterKey
+      });
+      emitJSON(socket, "roomJoined", { roomCode });
+
+      // If reconnecting makes it 2 players
       if (Object.keys(room.players).length >= MAX_PLAYERS) {
-        // Send to both players
+        if (room.waitingTimer) {
+          clearTimeout(room.waitingTimer);
+          room.waitingTimer = null;
+        }
+        // Send init to all
         for (const playerId in room.players) {
           const s = io.sockets.sockets.get(playerId);
           if (s) {
-            emitJSON(s, "yourId", {
-              id: s.id,
-              name: room.players[s.id].name,
-              profileImage: room.players[s.id].profileImage,
-              characterKey: room.players[s.id].characterKey
-            });
             emitJSON(s, "init", { players: room.players, obstacles: room.obstacles, movingObstacles: room.movingObstacles });
-            emitJSON(s, "roomJoined", { roomCode });
             emitJSON(s, "roundStart", { currentRound: room.currentRound });
           }
         }
-
         roomBroadcast(roomCode, "newPlayerConnected", { players: room.players, obstacles: room.obstacles, movingObstacles: room.movingObstacles });
-        room.isPlaying = true;
+        room.waitingForCountdown = Object.keys(room.players).length;
+        setTimeout(() => {
+          if (room.waitingForCountdown > 0) {
+            console.warn(`Force-starting countdown for room ${roomCode} after timeout`);
+            room.waitingForCountdown = 0;
+            startCountdown(roomCode);
+          }
+        }, 20000);
       }
       delete room.players[existingPlayerId];
-
       roomBroadcast(roomCode, "playerDisconnected", { playerId: existingPlayerId });
 
       if (Object.keys(room.players).length === 0) {
         delete rooms[roomCode];
       }
-    }
-    else if (Object.keys(room.players).length > MAX_PLAYERS) {
+    } else if (Object.keys(room.players).length >= MAX_PLAYERS) {
       return emitJSON(socket, "errorRoom", { msg: "Room is full" });
     } else {
       roomCode = code;
@@ -445,26 +540,59 @@ io.on("connection", socket => {
       };
 
       room.players[socket.id] = p;
-      // Wait until 2 players have joined before starting game
-      if (Object.keys(room.players).length >= MAX_PLAYERS) {
-        // Send to both players
+
+      // Always send yourId and roomJoined to the joining player
+      emitJSON(socket, "yourId", {
+        id: socket.id,
+        name: p.name,
+        profileImage: p.profileImage,
+        characterKey: p.characterKey
+      });
+      emitJSON(socket, "roomJoined", { roomCode });
+
+      const currentNumPlayers = Object.keys(room.players).length;
+
+      if (currentNumPlayers === 1) {
+        // Start waiting timer for opponent
+        room.waitingStart = Date.now();
+        room.waitingTimer = setTimeout(() => handleWaitingTimeout(code), 120000);
+        // Notify the first player to start waiting timer display
+        emitJSON(socket, "waitingForOpponent", { timeout: 120000 });
+      } else if (currentNumPlayers >= MAX_PLAYERS) {
+        // Cancel waiting timer if active
+        if (room.waitingTimer) {
+          clearTimeout(room.waitingTimer);
+          room.waitingTimer = null;
+        }
+        // Send init and start game for all players
         for (const playerId in room.players) {
           const s = io.sockets.sockets.get(playerId);
           if (s) {
-            emitJSON(s, "yourId", {
-              id: s.id,
-              name: room.players[s.id].name,
-              profileImage: room.players[s.id].profileImage,
-              characterKey: room.players[s.id].characterKey
-            });
             emitJSON(s, "init", { players: room.players, obstacles: room.obstacles, movingObstacles: room.movingObstacles });
-            emitJSON(s, "roomJoined", { roomCode });
             emitJSON(s, "roundStart", { currentRound: room.currentRound });
           }
         }
-
         roomBroadcast(roomCode, "newPlayerConnected", { players: room.players, obstacles: room.obstacles, movingObstacles: room.movingObstacles });
-        room.isPlaying = true;
+        room.waitingForCountdown = Object.keys(room.players).length;
+        setTimeout(() => {
+          if (room.waitingForCountdown > 0) {
+            console.warn(`Force-starting countdown for room ${roomCode} after timeout`);
+            room.waitingForCountdown = 0;
+            startCountdown(roomCode);
+          }
+        }, 20000);
+      }
+    }
+  });
+
+  // NEW: Handle client ready after countdown
+  socket.on("readyForCountdown", () => {
+    if (!roomCode || !rooms[roomCode]) return;
+    const room = rooms[roomCode];
+    if (room.waitingForCountdown > 0) {
+      room.waitingForCountdown--;
+      if (room.waitingForCountdown === 0) {
+        startCountdown(roomCode);
       }
     }
   });
@@ -478,6 +606,7 @@ io.on("connection", socket => {
 
   // ---------------- shoot --------------------
   socket.on("shoot", () => {
+    if (!roomCode || !rooms[roomCode] || !rooms[roomCode].isPlaying) return;
     const room = rooms[roomCode];
     const player = room?.players[socket.id];
     if (!player || !player.canShoot) return;
@@ -486,11 +615,8 @@ io.on("connection", socket => {
     setTimeout(() => player.canShoot = true, 200);
 
     const rad = degToRad(player.rotationY);
-    // Offset bullet to the right of the player (positive X direction)
-    const offsetX = Math.cos(rad + Math.PI / 2) * 0.5; // Right vector (90 degrees from forward)
-    const offsetZ = Math.sin(rad + Math.PI / 2) * 0.5; // Right vector
-    const bx = player.x + offsetX;
-    const bz = player.z + offsetZ;
+    const bx = player.x + Math.sin(rad);
+    const bz = player.z + Math.cos(rad);
 
     room.bullets.push({
       id: globalBulletId++, ownerId: socket.id,
@@ -565,6 +691,9 @@ io.on("connection", socket => {
             }
             // Delete player and room after sending data
             delete room.players[socket.id];
+            if (room.countdownInterval) {
+              clearInterval(room.countdownInterval);
+            }
             if (Object.keys(room.players).length === 0) {
               delete rooms[roomCode];
             }
@@ -572,6 +701,9 @@ io.on("connection", socket => {
         } else {
           // If no remaining players, just clean up
           delete room.players[socket.id];
+          if (room.countdownInterval) {
+            clearInterval(room.countdownInterval);
+          }
           delete rooms[roomCode];
         }
       }
@@ -579,15 +711,97 @@ io.on("connection", socket => {
   });
 });
 
+// Timer sync interval
+setInterval(() => {
+  for (const code in rooms) {
+    const room = rooms[code];
+    if (room.isPlaying && !room.winnerDataSent) {
+      const elapsed = Math.floor(room.activeTime / 1000);
+      const remaining = Math.max(0, 300 - elapsed);
+      roomBroadcast(code, "timerSync", { remaining });
+    }
+  }
+}, 10000);
+
 // -----------------------------------------------------------------------------
 // Main game loop
 // -----------------------------------------------------------------------------
 setInterval(() => {
   for (const code in rooms) {
     const room = rooms[code];
-    if (!room || room.isPlaying == false) continue;
+    if (!room) continue;
 
     let winnerDataToSend = null;
+
+    const now = Date.now();
+    if (room.isPlaying) {
+      room.activeTime += now - room.lastActiveTimestamp;
+      room.lastActiveTimestamp = now;
+    }
+
+    // NEW: Check 5-minute active gameplay timer
+    if (room.activeTime > 300000 && !room.winnerDataSent) {
+      const uuIds = Object.keys(room.roundWins);
+      if (uuIds.length !== 2) continue; // Safety check
+
+      const wins = uuIds.map(u => room.roundWins[u] || 0);
+
+      let winnerIndex = -1;
+      if (wins[0] > wins[1]) winnerIndex = 0;
+      else if (wins[1] > wins[0]) winnerIndex = 1;
+
+      if (winnerIndex !== -1) {
+        // Declare winner based on most round wins
+        const winnerUuId = uuIds[winnerIndex];
+        const loserUuId = uuIds[1 - winnerIndex];
+        const winnerPlayer = Object.values(room.players).find(p => p.uuId === winnerUuId);
+        const winnerName = winnerPlayer ? winnerPlayer.name : room.playerInfo[winnerUuId].name;
+
+        roomBroadcast(code, "gameWon", { winnerName });
+        room.winnerDataSent = true;
+        room.isPlaying = false;
+
+        winnerDataToSend = {
+          gameSessionUuid: code,
+          gameStatus: "FINISHED",
+          players: [
+            {
+              uuid: winnerUuId,
+              points: 100,
+              userGameSessionStatus: "WON",
+            },
+            {
+              uuid: loserUuId,
+              points: 0,
+              userGameSessionStatus: "DEFEATED",
+            },
+          ],
+        };
+      } else {
+        // Tie: Restart the game without dropping players
+        room.currentRound = 1;
+        room.roundWins = uuIds.reduce((acc, u) => { acc[u] = 0; return acc; }, {});
+        room.movingObstacles = movingObstacleSets[Math.floor(Math.random() * movingObstacleSets.length)]; // Optional: New obstacle set
+        resetRound(room);
+        room.activeTime = 0;
+        room.lastActiveTimestamp = 0;
+        room.gameStartTime = 0;
+        roomBroadcast(code, "roundStart", { currentRound: room.currentRound });
+        room.waitingForCountdown = Object.keys(room.players).length;
+        room.isPlaying = false;
+        if (room.roundEnding) room.roundEnding = false;
+        // Optional safety timeout for ready in tie restart
+        setTimeout(() => {
+          if (room.waitingForCountdown > 0) {
+            console.warn(`Force-starting countdown for room ${code} after timeout in tie restart`);
+            room.waitingForCountdown = 0;
+            startCountdown(code);
+          }
+        }, 20000); // Increased to 20 seconds
+      }
+    }
+
+    if (!room.isPlaying) continue;
 
     // --- Update moving obstacles (Y-axis ping-pong) ---
     for (const mob of room.movingObstacles) {
@@ -760,6 +974,9 @@ setInterval(() => {
         };
         room.winnerDataSent = true;
         room.isPlaying = false;
+        if (room.countdownInterval) {
+          clearInterval(room.countdownInterval);
+        }
       } else {
         roomBroadcast(code, "roundOver", {
           winnerId: winnerId, loserId: deadPlayerId,
@@ -770,8 +987,16 @@ setInterval(() => {
           room.currentRound++;
           resetRound(room);
           roomBroadcast(code, "roundStart", { currentRound: room.currentRound });
-          room.isPlaying = true;
+          room.waitingForCountdown = Object.keys(room.players).length;
           room.roundEnding = false;
+          // Optional safety timeout for force-start if clients don't ready
+          setTimeout(() => {
+            if (room.waitingForCountdown > 0) {
+              console.warn(`Force-starting countdown for room ${code} after timeout`);
+              room.waitingForCountdown = 0;
+              startCountdown(code);
+            }
+          }, 20000); // Increased to 20 seconds
         }, 5000);
       }
     }
@@ -795,6 +1020,9 @@ setInterval(() => {
         for (const pid in room.players) {
           io.sockets.sockets.get(pid)?.disconnect();
         }
+        if (room.countdownInterval) {
+          clearInterval(room.countdownInterval);
+        }
         delete rooms[code];
       })();
     }
@@ -808,7 +1036,8 @@ setInterval(() => {
       })),
       movingObstacles: room.movingObstacles.map(m => ({
         id: m.id, x: m.x, y: m.y, z: m.z, size: m.size, rotationY: m.rotationY, prefabType: m.prefabType
-      }))
+      })),
+      roundWins: room.roundWins // Sends UUID-to-wins mapping
     });
   }
 }, 1000 / TICK_RATE);
