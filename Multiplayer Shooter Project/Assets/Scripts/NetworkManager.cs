@@ -16,8 +16,6 @@ public class NetworkManager : MonoBehaviour
     public static NetworkManager Instance;
 
     // -------- Inspector references for UI --------
-    [SerializeField] private TMP_InputField inputName;
-    [SerializeField] private TMP_InputField inputRoomCode;
     [SerializeField] private TMP_Text txtRoomDisplay;
     [SerializeField] private TMP_Text txtErrorMessage;
     [SerializeField] private TMP_Text roundDisplay;
@@ -36,13 +34,10 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private VariableJoystick variableJoystick;
     [SerializeField] private GameObject lobbyRobo;
     [SerializeField] private TMP_Text timerText; // NEW: Text for displaying remaining time (e.g., "05:00")
-    [SerializeField] private TMP_Text waitingTimerText; // NEW: Text for waiting timer display
-    [SerializeField] private TMP_Text playerRoundWinsText; // NEW: Text for current player's round wins
-    [SerializeField] private TMP_Text opponentRoundWinsText; // NEW: Text for opponent's round wins
+    [SerializeField] private GameObject cinematicCamera; // NEW: Reference to a separate cinematic camera
 
     [Header("URL Configuration")]
     [SerializeField] private string url = "ws://192.168.1.12:3000";
-
 
     [Header("Prefabs")]
     [SerializeField] private GameObject playerPrefab;
@@ -62,11 +57,6 @@ public class NetworkManager : MonoBehaviour
 
     private Dictionary<string, GameObject> characterPrefabs = new Dictionary<string, GameObject>();
 
-    [Header("Cinematic Settings")]
-    [SerializeField] private Vector3 cinematicCameraOffset = new Vector3(0, 10, -5); // NEW: Configurable camera position offset for intro
-    [SerializeField] private Vector3 cinematicCameraRotation = new Vector3(0, 0, 0); // NEW: Configurable camera rotation for intro
-    [SerializeField] private float cinematicDuration = 3f; // Optional: Configurable duration
-
     // -------- Internal state --------
     private Socket socket;
     private string myPlayerId;
@@ -78,18 +68,21 @@ public class NetworkManager : MonoBehaviour
     private readonly Queue<Action> mainThreadCalls = new();
     private readonly Dictionary<string, string> playerNames = new();
     private bool isFirstRound = true;
+    public event System.Action<StateUpdateData> OnStateUpdated;
 
     [Header("Game Settings")]
-    [SerializeField] private int totalRounds = 3; // NEW: Configurable total rounds (default 3)
+    [SerializeField] private int totalRounds = 5; // NEW: Configurable total rounds (default 5)
     [SerializeField] private float gameDuration = 300f; // NEW: Game duration in seconds (5 minutes)
 
     private int expectedRound = 1; // NEW: Track expected next round for detecting restarts
     private Coroutine timerCoroutine; // NEW: Reference to the timer coroutine
     private int currentRemaining;
+    private Coroutine timeoutCoroutine; // NEW: Reference to the timeout coroutine
 
     #region Unity lifecycle
     private void Awake()
     {
+        Time.timeScale = 1f;
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
@@ -104,6 +97,20 @@ public class NetworkManager : MonoBehaviour
         currentRemaining = (int)gameDuration;
     }
 
+    public string GetPlayerUuid(string playerId)
+    {
+        return playerUuids.TryGetValue(playerId, out string uuid) ? uuid : null;
+    }
+
+    // Add this property to NetworkManager to expose myPlayerId
+    public string MyPlayerId => myPlayerId;
+
+    // Add a getter method for playerNames
+    public string GetPlayerName(string playerId)
+    {
+        return playerNames.TryGetValue(playerId, out string name) ? name : null;
+    }
+
     private void Start()
     {
         Debug.Log("About to connect socket " + url);
@@ -112,6 +119,10 @@ public class NetworkManager : MonoBehaviour
         RegisterEvents();
         socket.connect();
         Debug.Log("Socket connect() called" + url);
+
+        // Enable UI camera and disable cinematic camera
+        UICamera.SetActive(true);
+        cinematicCamera.SetActive(false);
 
         menuUI.SetActive(true);
         gameplayUI.SetActive(false);
@@ -162,7 +173,15 @@ public class NetworkManager : MonoBehaviour
                 mainThreadCalls.Dequeue()?.Invoke();
     }
 
-    private void OnDestroy() => socket?.disconnect();
+    private void OnDestroy()
+    {
+        socket?.disconnect();
+        if (timeoutCoroutine != null)
+        {
+            StopCoroutine(timeoutCoroutine);
+            timeoutCoroutine = null;
+        }
+    }
     #endregion
 
     #region Socket event registration
@@ -178,7 +197,7 @@ public class NetworkManager : MonoBehaviour
         socket.on("yourId", d => Queue(() => OnYourId(Parse<YourIdResponse>(d))));
         socket.on("roomJoined", d => Queue(() => OnRoomJoined(Parse<RoomJoinedResponse>(d))));
         socket.on("errorRoom", d => Queue(() => OnErrorRoom(Parse<ErrorRoomResponse>(d))));
-        socket.on("waitingForOpponent", d => Queue(() => OnWaitingForOpponent(Parse<WaitingForOpponentResponse>(d)))); // NEW
+        socket.on("waitingForOpponent", d => Queue(() => OnWaitingForOpponent(Parse<WaitingForOpponentResponse>(d))));
         socket.on("init", d => Queue(() => OnInit(Parse<InitData>(d))));
         socket.on("newPlayerConnected", d => Queue(() => OnNewPlayerConnected(Parse<InitData>(d))));
         socket.on("stateUpdate", d => Queue(() => OnStateUpdate(Parse<StateUpdateData>(d))));
@@ -219,7 +238,6 @@ public class NetworkManager : MonoBehaviour
         {
             StartCoroutine(LoadProfileImage(d.profileImage));
         }
-        menuUI.SetActive(false);
         lobbyRobo.SetActive(false);
         gameEndHandler.localPlayerName = d.name;
         UICamera.SetActive(false);
@@ -255,37 +273,62 @@ public class NetworkManager : MonoBehaviour
         errorAnimator.SetTrigger("Start");
     }
 
-    // NEW: Handle waiting for opponent
     private void OnWaitingForOpponent(WaitingForOpponentResponse d)
     {
-        menuUI.SetActive(true);
-        StartCoroutine(WaitingTimerCoroutine(d.timeout / 1000));
+        // Start timeout coroutine
+        if (timeoutCoroutine != null)
+        {
+            StopCoroutine(timeoutCoroutine);
+        }
+        timeoutCoroutine = StartCoroutine(TimeoutCoroutine(d.timeout));
     }
 
-    private IEnumerator WaitingTimerCoroutine(int seconds)
+    private IEnumerator TimeoutCoroutine(int timeoutSeconds)
     {
-        for (int i = seconds; i >= 0; i--)
-        {
-            waitingTimerText.text = $"Waiting for opponent: {i} seconds";
-            yield return new WaitForSeconds(1);
-        }
-        // Timer expired, server will handle win, but hide panel if needed
-        menuUI.SetActive(false);
+        Debug.Log($"Waiting for opponent, timeout in {timeoutSeconds} seconds");
+        yield return new WaitForSecondsRealtime(timeoutSeconds);
+        Debug.Log("Timeout occurred, sending game over");
+        SendGameOver();
+        timeoutCoroutine = null;
     }
 
     private void OnInit(InitData d)
     {
-        menuUI.SetActive(false); // NEW: Hide waiting panel when game initializes
+        // Stop timeout coroutine if running
+        if (timeoutCoroutine != null)
+        {
+            StopCoroutine(timeoutCoroutine);
+            timeoutCoroutine = null;
+        }
+
+        menuUI.SetActive(false); // Hide waiting panel when game initializes
+        cinematicCamera.SetActive(true); // Ensure cinematic camera is disabled at start
         SpawnPlayer(d.players);
         SyncMovingObstacles(d.movingObstacles);
+
         SetupCamera();
     }
 
     private void OnNewPlayerConnected(InitData d)
     {
-        menuUI.SetActive(false); // NEW: Hide waiting panel when new player connects
+        // Stop timeout coroutine if running
+        if (timeoutCoroutine != null)
+        {
+            StopCoroutine(timeoutCoroutine);
+            timeoutCoroutine = null;
+        }
+        if (!cinematicCamera.activeSelf)
+            cinematicCamera.SetActive(true);
+    
+        menuUI.SetActive(false);
         SpawnPlayer(d.players);
         SyncMovingObstacles(d.movingObstacles);
+
+        // Ensure both players are present before starting cinematic
+        if (players.Count >= 2 && !countdownPanel.activeSelf)
+        {
+            StartCoroutine(StartRoundCoroutine());
+        }
     }
 
     private void SetupCamera()
@@ -298,35 +341,26 @@ public class NetworkManager : MonoBehaviour
         }
     }
 
-
     private void OnStateUpdate(StateUpdateData d)
     {
         UpdatePlayers(d.players);
         SyncBullets(d.bullets);
         SyncMovingObstacles(d.movingObstacles);
-        UpdateRoundWins(d.roundWins); // NEW: Update round wins UI
-    }
 
-    private void UpdateRoundWins(Dictionary<string, int> roundWins)
-    {
-        if (roundWins == null) return;
-
-        string myUuid = playerUuids.ContainsKey(myPlayerId) ? playerUuids[myPlayerId] : null;
-        string opponentId = GetOpponentId();
-        string opponentUuid = opponentId != null && playerUuids.ContainsKey(opponentId) ? playerUuids[opponentId] : null;
-
-        if (playerRoundWinsText != null && myUuid != null)
+        // Add debug logging to inspect roundWins
+        if (d.roundWins != null)
         {
-            int myWins = roundWins.ContainsKey(myUuid) ? roundWins[myUuid] : 0;
-            playerRoundWinsText.text = $"{playerNameText.text}: {myWins} Wins";
+            foreach (var kvp in d.roundWins)
+            {
+                Debug.Log($"RoundWins - UUID: {kvp.Key}, Wins: {kvp.Value}");
+            }
+        }
+        else
+        {
+            Debug.LogWarning("RoundWins data is null in OnStateUpdate");
         }
 
-        if (opponentRoundWinsText != null && opponentUuid != null)
-        {
-            int opponentWins = roundWins.ContainsKey(opponentUuid) ? roundWins[opponentUuid] : 0;
-            string opponentName = playerNames.ContainsKey(opponentId) ? playerNames[opponentId] : "Opponent";
-            opponentRoundWinsText.text = $"{opponentName}: {opponentWins} Wins";
-        }
+        OnStateUpdated?.Invoke(d); // Invoke the event
     }
 
     private void OnBulletRemove(BulletRemoveResponse d)
@@ -389,9 +423,9 @@ public class NetworkManager : MonoBehaviour
             loser.GetComponent<PlayerAnimationHandler>().DeathAnimation();
 
         if (players.TryGetValue(myPlayerId, out var me))
-            me.GetComponent<PlayerInput>().EndGame(); // disable input during the 3s pause
+            me.GetComponent<PlayerInput>().EndGame(); // disable input during the 5s pause
 
-        // NEW: show "won the round." text and auto-hide after 3s
+        // NEW: show "won the round." text and auto-hide after 5s
         gameEndHandler.RoundEnd(d.winnerName);
         Debug.Log("Round winner: " + d.winnerName);
 
@@ -471,10 +505,21 @@ public class NetworkManager : MonoBehaviour
 
     private void OnRoundStart(RoundStartData d)
     {
+        // Log the current round for debugging
+        Debug.Log($"RoundStart: Current Round {d.currentRound}");
+
+        // NEW: Clear all bullets at the start of a new round
+        foreach (var bullet in bullets)
+        {
+            Destroy(bullet.Value);
+        }
+        bullets.Clear();
+        Debug.Log($"Cleared {bullets.Count} bullets at round start");
+
         // NEW: Detect game restart on tie (currentRound reset to 1 when expected higher)
         if (d.currentRound == 1 && expectedRound > 1)
         {
-            // Restart timer on game restart
+            Debug.Log("Game restarted due to tie. Resetting timer and round wins.");
             currentRemaining = (int)gameDuration;
             UpdateTimerText();
             isFirstRound = true; // Optional: Replay cinematic on restart
@@ -531,22 +576,31 @@ public class NetworkManager : MonoBehaviour
 
     private IEnumerator CinematicIntro()
     {
-        ThirdPersonCamera cam = Camera.main.GetComponent<ThirdPersonCamera>();
-        if (cam != null) cam.enabled = false;
+        // Disable main gameplay camera and its script
+        Camera mainCamera = Camera.main;
+        ThirdPersonCamera thirdPersonCam = mainCamera?.GetComponent<ThirdPersonCamera>();
+        if (mainCamera != null) mainCamera.enabled = false;
+        if (thirdPersonCam != null) thirdPersonCam.enabled = false;
 
-        // Simple cinematic: position camera above the arena center
-        string opponentId = GetOpponentId();
-        if (opponentId == null) yield break;
-        Vector3 myPos = players[myPlayerId].transform.position;
-        Vector3 oppPos = players[opponentId].transform.position;
-        Vector3 center = (myPos + oppPos) / 2f;
-        Camera.main.transform.position = center + cinematicCameraOffset;
-        Camera.main.transform.rotation = Quaternion.Euler(cinematicCameraRotation);
+        // Disable UI camera if active
+        if (UICamera != null) UICamera.SetActive(false);
 
-        yield return new WaitForSeconds(cinematicDuration);
+        // Enable cinematic camera
+        cinematicCamera.SetActive(true);
 
-        if (cam != null) cam.enabled = true;
+        yield return new WaitForSeconds(3f); // ⏱️ Duration of cinematic
+
+        cinematicCamera.SetActive(false);
+        // Switch back to main camera
+        if (mainCamera != null) mainCamera.enabled = true;
+        if (thirdPersonCam != null)
+        {
+            thirdPersonCam.enabled = true;
+            thirdPersonCam.SetTarget(players[myPlayerId].transform);
+            thirdPersonCam.SetMode(ThirdPersonCamera.CameraMode.Behind);
+        }
     }
+
 
     private void OnCountdown(CountdownData d)
     {
@@ -562,6 +616,9 @@ public class NetworkManager : MonoBehaviour
             var playerInput = meAgain.GetComponent<PlayerInput>();
             playerInput.BeginRound(); // Re-enable input after countdown
         }
+
+        // NEW: Request a state update from the server to ensure roundWins is refreshed
+        Emit("requestStateUpdate");
     }
 
     private void OnTimerSync(TimerSyncData d)
@@ -572,46 +629,15 @@ public class NetworkManager : MonoBehaviour
     #endregion
 
     #region Outgoing events
-    public void CreateRoom()
-    {
-        if (string.IsNullOrWhiteSpace(inputName.text))
-        {
-            txtErrorMessage.text = "Enter your name!";
-            errorAnimator.SetTrigger("Start");
-            return;
-        }
-        Emit("createRoom", new { name = inputName.text });
-    }
-
     public void JoinRoom()
     {
         var urlParams = GetUrlParameters();
 
-        if (urlParams.ContainsKey("gameSessionUuid") && urlParams.ContainsKey("uuid"))
-        {
-            string roomCode = urlParams["gameSessionUuid"];
-            string playerUuId = urlParams["uuid"];
+        string roomCode = urlParams["gameSessionUuid"];
+        string playerUuId = urlParams["uuid"];
 
-            JoinRoomWithParams(roomCode, playerUuId);
-        }
-        else
-        {
-            if (string.IsNullOrWhiteSpace(inputName.text))
-            {
-                txtErrorMessage.text = "Enter your name!";
-                errorAnimator.SetTrigger("Start");
-                return;
-            }
+        JoinRoomWithParams(roomCode, playerUuId);
 
-            if (string.IsNullOrWhiteSpace(inputRoomCode.text))
-            {
-                txtErrorMessage.text = "Enter room code!";
-                errorAnimator.SetTrigger("Start");
-                return;
-            }
-
-            Emit("joinRoom", new { roomCode = inputRoomCode.text, name = inputName.text });
-        }
     }
 
     private Dictionary<string, string> GetUrlParameters()
@@ -682,6 +708,7 @@ public class NetworkManager : MonoBehaviour
                 GameObject go = Instantiate(prefab);
                 players[id] = go;
                 playerNames[id] = pd.name;
+                playerUuids[id] = pd.uuId;
 
                 if (id != myPlayerId)
                 {
@@ -773,6 +800,7 @@ public class NetworkManager : MonoBehaviour
                 GameObject go = Instantiate(prefab);
                 players[id] = go;
                 playerNames[id] = pd.name;
+                playerUuids[id] = pd.uuId;
 
                 if (id != myPlayerId)
                 {
@@ -880,7 +908,7 @@ public class NetworkManager : MonoBehaviour
     }
     #endregion
 
-    private string GetPlayerIdByName(string name)
+    public string GetPlayerIdByName(string name)
     {
         foreach (var kv in playerNames)
         {
@@ -889,7 +917,7 @@ public class NetworkManager : MonoBehaviour
         return null;
     }
 
-    private string GetOpponentId()
+    public string GetOpponentId()
     {
         foreach (var key in players.Keys)
         {
