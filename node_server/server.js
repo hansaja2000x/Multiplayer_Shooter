@@ -291,8 +291,8 @@ app.post("/api/createRoom", async (req, res) => {
         gameStateId: roomCode,
         name: room.name,
         createDate: new Date(),
-        link1: `http://192.168.1.6:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
-        link2: `http://192.168.1.6:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
+        link1: `http://192.168.1.12:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[0].uuid}`,
+        link2: `http://192.168.1.12:8000/?gameSessionUuid=${roomCode}&gameStateId=${roomCode}&uuid=${players[1]?.uuid || ""}`,
       }
     };
     rooms[roomCode].allowedPlayers = players.map(p => p.uuid);

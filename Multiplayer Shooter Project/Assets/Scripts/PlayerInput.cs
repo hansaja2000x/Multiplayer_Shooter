@@ -13,12 +13,14 @@ public class PlayerInput : MonoBehaviour
     [SerializeField] private bool invertYRotation = false;
     [SerializeField, Range(0.1f, 1f)] private float rotationDeadzone = 0.1f;
     [SerializeField] private bool verticalAimEnabled = true;
+    [SerializeField, Range(10f, 100f)] private float minSlideDistance = 20f;
 
     private Button shootButton;
     private float lastTouchX;
     private float lastTouchY;
     private bool isCursorLocked = false;
     private int rotationTouchId = -1;
+    private Vector2 touchStartPos;
 
     private bool fLast, bLast, lLast, rLast;
     private float rotLast;
@@ -58,7 +60,7 @@ public class PlayerInput : MonoBehaviour
             if (!verticalAimEnabled) rotY = 0f;
         }
 
-        // ✅ Handle joystick movement (mobile)
+        // Handle joystick movement (mobile)
         if (variableJoystick != null && Application.isMobilePlatform)
         {
             float vertical = variableJoystick.Vertical;
@@ -73,42 +75,49 @@ public class PlayerInput : MonoBehaviour
             r |= horizontal > 0;
         }
 
-        // ✅ Handle rotation (right half of screen only, horizontal only)
+        // Handle rotation (right half of screen only, slide only)
         if (Application.isMobilePlatform)
         {
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch touch = Input.GetTouch(i);
 
+                // Skip touches over UI elements
                 if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(touch.fingerId))
                     continue;
 
-                if (touch.position.x < Screen.width * 0.5f)
+                // Skip touches on the left half of the screen
+                if (touch.position.x < Screen.width * rotationScreenThreshold)
                     continue;
 
                 if (touch.phase == TouchPhase.Began)
                 {
                     lastTouchX = touch.position.x;
                     lastTouchY = touch.position.y;
+                    touchStartPos = touch.position;
                     rotationTouchId = touch.fingerId;
                 }
                 else if (touch.fingerId == rotationTouchId && touch.phase == TouchPhase.Moved)
                 {
-                    float deltaX = touch.position.x - lastTouchX;
-                    float deltaY = touch.position.y - lastTouchY;
+                    float distanceMoved = Vector2.Distance(touchStartPos, touch.position);
 
-                    if (Mathf.Abs(deltaX) < rotationDeadzone) deltaX = 0f;
-                    if (Mathf.Abs(deltaY) < rotationDeadzone) deltaY = 0f;
-
-                    rot = deltaX * rotationSensitivity;
-                    if (verticalAimEnabled)
+                    if (distanceMoved > minSlideDistance)
                     {
-                        rotY = deltaY * rotationSensitivity * (invertYRotation ? -1f : 1f);
+                        float deltaX = touch.position.x - lastTouchX;
+                        float deltaY = touch.position.y - lastTouchY;
+
+                        if (Mathf.Abs(deltaX) < rotationDeadzone) deltaX = 0f;
+                        if (Mathf.Abs(deltaY) < rotationDeadzone) deltaY = 0f;
+
+                        rot = deltaX * rotationSensitivity;
+                        if (verticalAimEnabled)
+                        {
+                            rotY = deltaY * rotationSensitivity * (invertYRotation ? -1f : 1f);
+                        }
                     }
 
                     lastTouchX = touch.position.x;
                     lastTouchY = touch.position.y;
-                    break;
                 }
                 else if (touch.fingerId == rotationTouchId &&
                          (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled))
@@ -118,7 +127,7 @@ public class PlayerInput : MonoBehaviour
             }
         }
 
-        // ✅ Smooth rotation
+        // Smooth rotation
         smoothRot = Mathf.Lerp(smoothRot, rot, Time.deltaTime * 10f);
         smoothRotY = Mathf.Lerp(smoothRotY, rotY, Time.deltaTime * 10f);
 
@@ -128,12 +137,13 @@ public class PlayerInput : MonoBehaviour
             NetworkManager.Instance.SendInput(f, b, l, r, smoothRot, smoothRotY);
             fLast = f; bLast = b; lLast = l; rLast = r; rotLast = smoothRot; rotUpLast = smoothRotY;
         }
-        if (Input.GetMouseButtonDown(0))
+
+        // Handle shooting for PC only (mouse click)
+        if (!Application.isMobilePlatform && Input.GetMouseButtonDown(0))
         {
             NetworkManager.Instance.SendShoot();
         }
     }
-
 
     private void HideTouchControls()
     {

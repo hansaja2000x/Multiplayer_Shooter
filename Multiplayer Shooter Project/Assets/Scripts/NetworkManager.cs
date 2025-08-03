@@ -19,7 +19,7 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private TMP_Text txtRoomDisplay;
     [SerializeField] private TMP_Text txtErrorMessage;
     [SerializeField] private TMP_Text roundDisplay;
-    [SerializeField] private TMP_Text roundProgressText; // NEW: Additional text for "Round X/3" display
+    [SerializeField] private TMP_Text roundProgressText; // NEW: Additional text for "Round X/5" display
     [SerializeField] private TMP_Text countdownText; // NEW: For countdown and messages
     [SerializeField] private GameObject countdownPanel; // NEW: Separate panel for countdown UI
     [SerializeField] private GameObject menuUI;
@@ -37,7 +37,7 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] private GameObject cinematicCamera; // NEW: Reference to a separate cinematic camera
 
     [Header("URL Configuration")]
-    [SerializeField] private string url = "ws://192.168.1.12:3000";
+    [SerializeField] private string url = "ws://192.168.1.12:3000"; // Default URL, can be overridden in inspector
 
     [Header("Prefabs")]
     [SerializeField] private GameObject playerPrefab;
